@@ -11,17 +11,28 @@ import {
 	InitializeParams,
 	DidChangeConfigurationNotification,
 	CompletionItem,
-	CompletionItemKind,
-	TextDocumentPositionParams,
 	TextDocumentSyncKind,
 	InitializeResult,
-	DocumentDiagnosticReportKind,
-	type DocumentDiagnosticReport
+	Location,
+	DocumentSymbol,
+	Range
 } from 'vscode-languageserver/node';
 
 import {
 	TextDocument
 } from 'vscode-languageserver-textdocument';
+
+import * as child_process from 'child_process';
+import * as fs from 'fs';
+import * as path from 'path';
+import * as os from 'os';
+import * as url from 'url';
+
+import {
+	parseDocumentSymbols,
+	getCompletions,
+	findDefinition
+} from './pascalParser';
 
 // Create a connection for the server, using Node's IPC as a transport.
 // Also include all preview / proposed LSP features.
@@ -32,7 +43,6 @@ const documents = new TextDocuments(TextDocument);
 
 let hasConfigurationCapability = false;
 let hasWorkspaceFolderCapability = false;
-let hasDiagnosticRelatedInformationCapability = false;
 
 connection.onInitialize((params: InitializeParams) => {
 	const capabilities = params.capabilities;
@@ -45,11 +55,6 @@ connection.onInitialize((params: InitializeParams) => {
 	hasWorkspaceFolderCapability = !!(
 		capabilities.workspace && !!capabilities.workspace.workspaceFolders
 	);
-	hasDiagnosticRelatedInformationCapability = !!(
-		capabilities.textDocument &&
-		capabilities.textDocument.publishDiagnostics &&
-		capabilities.textDocument.publishDiagnostics.relatedInformation
-	);
 
 	const result: InitializeResult = {
 		capabilities: {
@@ -58,10 +63,8 @@ connection.onInitialize((params: InitializeParams) => {
 			completionProvider: {
 				resolveProvider: true
 			},
-			diagnosticProvider: {
-				interFileDependencies: false,
-				workspaceDiagnostics: false
-			}
+			definitionProvider: true,
+			documentSymbolProvider: true
 		}
 	};
 	if (hasWorkspaceFolderCapability) {
@@ -86,19 +89,24 @@ connection.onInitialized(() => {
 	}
 });
 
-// The example settings
-interface ExampleSettings {
-	maxNumberOfProblems: number;
+// The Pascal settings
+interface PascalSettings {
+	compilerPath: string;
+	compilerOptions: string[];
+	checkTrigger: 'onSave' | 'onChange' | 'off';
+	onChangeDebounceMs: number;
 }
 
-// The global settings, used when the `workspace/configuration` request is not supported by the client.
-// Please note that this is not the case when using this server with the client provided in this example
-// but could happen with other clients.
-const defaultSettings: ExampleSettings = { maxNumberOfProblems: 1000 };
-let globalSettings: ExampleSettings = defaultSettings;
+const defaultSettings: PascalSettings = {
+	compilerPath: 'fpc',
+	compilerOptions: [],
+	checkTrigger: 'onSave',
+	onChangeDebounceMs: 700
+};
+let globalSettings: PascalSettings = defaultSettings;
 
 // Cache the settings of all open documents
-const documentSettings = new Map<string, Thenable<ExampleSettings>>();
+const documentSettings = new Map<string, Thenable<PascalSettings>>();
 
 connection.onDidChangeConfiguration(change => {
 	if (hasConfigurationCapability) {
@@ -106,16 +114,16 @@ connection.onDidChangeConfiguration(change => {
 		documentSettings.clear();
 	} else {
 		globalSettings = (
-			(change.settings.languageServerExample || defaultSettings)
+			(change.settings.pascal || defaultSettings)
 		);
 	}
-	// Refresh the diagnostics since the `maxNumberOfProblems` could have changed.
-	// We could optimize things here and re-fetch the setting first can compare it
-	// to the existing setting, but this is out of scope for this example.
-	connection.languages.diagnostics.refresh();
+	// Refresh the diagnostics for all open documents
+	for (const doc of documents.all()) {
+		validateTextDocument(doc);
+	}
 });
 
-function getDocumentSettings(resource: string): Thenable<ExampleSettings> {
+function getDocumentSettings(resource: string): Thenable<PascalSettings> {
 	if (!hasConfigurationCapability) {
 		return Promise.resolve(globalSettings);
 	}
@@ -123,85 +131,252 @@ function getDocumentSettings(resource: string): Thenable<ExampleSettings> {
 	if (!result) {
 		result = connection.workspace.getConfiguration({
 			scopeUri: resource,
-			section: 'languageServerExample'
+			section: 'pascal'
 		});
 		documentSettings.set(resource, result);
 	}
 	return result;
 }
 
+const filesWithDiagnostics = new Set<string>();
+const activeProcesses = new Map<string, child_process.ChildProcess>();
+const validationTimers = new Map<string, NodeJS.Timeout>();
+
 // Only keep settings for open documents
 documents.onDidClose(e => {
 	documentSettings.delete(e.document.uri);
-});
-
-
-connection.languages.diagnostics.on(async (params) => {
-	const document = documents.get(params.textDocument.uri);
-	if (document !== undefined) {
-		return {
-			kind: DocumentDiagnosticReportKind.Full,
-			items: await validateTextDocument(document)
-		} satisfies DocumentDiagnosticReport;
-	} else {
-		// We don't know the document. We can either try to read it from disk
-		// or we don't report problems for it.
-		return {
-			kind: DocumentDiagnosticReportKind.Full,
-			items: []
-		} satisfies DocumentDiagnosticReport;
+	const timer = validationTimers.get(e.document.uri);
+	if (timer) {
+		clearTimeout(timer);
+		validationTimers.delete(e.document.uri);
 	}
+	const proc = activeProcesses.get(e.document.uri);
+	if (proc) {
+		proc.kill();
+		activeProcesses.delete(e.document.uri);
+	}
+	// Clear diagnostics for closed document
+	connection.sendDiagnostics({ uri: e.document.uri, diagnostics: [] });
+	filesWithDiagnostics.delete(e.document.uri);
 });
 
 // The content of a text document has changed. This event is emitted
 // when the text document first opened or when its content has changed.
-documents.onDidChangeContent(change => {
+documents.onDidChangeContent(async change => {
+	const settings = await getDocumentSettings(change.document.uri);
+	if (settings.checkTrigger === 'onChange') {
+		const existingTimer = validationTimers.get(change.document.uri);
+		if (existingTimer) {
+			clearTimeout(existingTimer);
+		}
+		const timer = setTimeout(() => {
+			validationTimers.delete(change.document.uri);
+			validateTextDocument(change.document);
+		}, settings.onChangeDebounceMs);
+		validationTimers.set(change.document.uri, timer);
+	}
+});
+
+documents.onDidSave(change => {
 	validateTextDocument(change.document);
 });
 
-async function validateTextDocument(textDocument: TextDocument): Promise<Diagnostic[]> {
-	// In this simple example we get the settings for every validate run.
+documents.onDidOpen(change => {
+	validateTextDocument(change.document);
+});
+
+async function validateTextDocument(textDocument: TextDocument): Promise<void> {
 	const settings = await getDocumentSettings(textDocument.uri);
 
-	// The validator creates diagnostics for all uppercase words length 2 and more
-	const text = textDocument.getText();
-	const pattern = /\b[A-Z]{2,}\b/g;
-	let m: RegExpExecArray | null;
-
-	let problems = 0;
-	const diagnostics: Diagnostic[] = [];
-	while ((m = pattern.exec(text)) && problems < settings.maxNumberOfProblems) {
-		problems++;
-		const diagnostic: Diagnostic = {
-			severity: DiagnosticSeverity.Warning,
-			range: {
-				start: textDocument.positionAt(m.index),
-				end: textDocument.positionAt(m.index + m[0].length)
-			},
-			message: `${m[0]} is all uppercase.`,
-			source: 'ex'
-		};
-		if (hasDiagnosticRelatedInformationCapability) {
-			diagnostic.relatedInformation = [
-				{
-					location: {
-						uri: textDocument.uri,
-						range: Object.assign({}, diagnostic.range)
-					},
-					message: 'Spelling matters'
-				},
-				{
-					location: {
-						uri: textDocument.uri,
-						range: Object.assign({}, diagnostic.range)
-					},
-					message: 'Particularly for names'
-				}
-			];
-		}
-		diagnostics.push(diagnostic);
+	if (settings.checkTrigger === 'off') {
+		// Clear diagnostics for this file
+		connection.sendDiagnostics({ uri: textDocument.uri, diagnostics: [] });
+		filesWithDiagnostics.delete(textDocument.uri);
+		return;
 	}
-	return diagnostics;
+
+	const uri = textDocument.uri;
+	if (!uri.startsWith('file://')) {
+		return;
+	}
+
+	const originalPath = url.fileURLToPath(uri);
+	const cwd = path.dirname(originalPath);
+	const filename = path.basename(originalPath);
+
+	// Kill any active compile process for this document
+	const activeProc = activeProcesses.get(uri);
+	if (activeProc) {
+		activeProc.kill();
+		activeProcesses.delete(uri);
+	}
+
+	// Create temp directory for compilation to avoid cluttering workspace
+	const tempDir = path.join(os.tmpdir(), 'pascal-lsp-temp-' + Math.random().toString(36).substring(2, 10));
+	const outDir = path.join(tempDir, 'out');
+	
+	try {
+		await fs.promises.mkdir(outDir, { recursive: true });
+		
+		let targetFilePath = originalPath;
+		// If we validate on change, write current editor contents to a temp file
+		if (settings.checkTrigger === 'onChange') {
+			targetFilePath = path.join(tempDir, filename);
+			await fs.promises.writeFile(targetFilePath, textDocument.getText(), 'utf8');
+		}
+
+		const compilerPath = settings.compilerPath || 'fpc';
+		const args = [
+			'-Cn', // Compile only, do not link
+			'-FE' + outDir,
+			'-FU' + outDir,
+			...settings.compilerOptions,
+			targetFilePath
+		];
+
+		const child = child_process.execFile(compilerPath, args, { cwd });
+		activeProcesses.set(uri, child);
+
+		let stdout = '';
+		let stderr = '';
+
+		if (child.stdout) {
+			child.stdout.on('data', data => {
+				stdout += data;
+			});
+		}
+		if (child.stderr) {
+			child.stderr.on('data', data => {
+				stderr += data;
+			});
+		}
+
+		child.on('close', async () => {
+			activeProcesses.delete(uri);
+
+			// Map to hold current diagnostic report updates
+			const currentDiagnostics = new Map<string, Diagnostic[]>();
+			
+			// Initialize with currently dirty files to clear them if resolved
+			for (const prevUri of filesWithDiagnostics) {
+				currentDiagnostics.set(prevUri, []);
+			}
+			currentDiagnostics.set(uri, []);
+
+			const combinedOutput = stdout + '\n' + stderr;
+			const lines = combinedOutput.split(/\r?\n/);
+			const lineRegex = /^(.*?)\((\d+)(?:,(\d+))?\)\s+(Error|Fatal|Warning|Hint|Note):\s+(.*)$/i;
+
+			for (const line of lines) {
+				const match = lineRegex.exec(line);
+				if (match) {
+					const matchedPath = match[1];
+					const lineNum = parseInt(match[2], 10) - 1; // 0-based
+					const colNum = match[3] ? parseInt(match[3], 10) - 1 : -1; // 0-based
+					const severityStr = match[4].toLowerCase();
+					const message = match[5];
+
+					// Map temp file back to original uri
+					let matchedUri = '';
+					if (matchedPath === targetFilePath || path.basename(matchedPath).toLowerCase() === filename.toLowerCase()) {
+						matchedUri = uri;
+					} else {
+						// Resolve other dependency files absolute paths
+						let resolvedPath = matchedPath;
+						if (!path.isAbsolute(resolvedPath)) {
+							resolvedPath = path.resolve(cwd, resolvedPath);
+						}
+						matchedUri = url.pathToFileURL(resolvedPath).toString();
+					}
+
+					// Find line content to get exact end position of the word
+					let lineContent = '';
+					if (matchedUri === uri) {
+						const docLines = textDocument.getText().split(/\r?\n/);
+						if (lineNum >= 0 && lineNum < docLines.length) {
+							lineContent = docLines[lineNum];
+						}
+					} else {
+						// Read line content from disk for other files
+						try {
+							const fileContent = await fs.promises.readFile(url.fileURLToPath(matchedUri), 'utf8');
+							const fileLines = fileContent.split(/\r?\n/);
+							if (lineNum >= 0 && lineNum < fileLines.length) {
+								lineContent = fileLines[lineNum];
+							}
+						} catch (e) {
+							// ignore
+						}
+					}
+
+					let severity: DiagnosticSeverity = DiagnosticSeverity.Error;
+					if (severityStr === 'warning') {
+						severity = DiagnosticSeverity.Warning;
+					} else if (severityStr === 'hint') {
+						severity = DiagnosticSeverity.Hint;
+					} else if (severityStr === 'note') {
+						severity = DiagnosticSeverity.Information;
+					}
+
+					const range = getDiagnosticRange(lineContent, lineNum, colNum);
+					const diagnostic: Diagnostic = {
+						severity,
+						range,
+						message,
+						source: 'fpc'
+					};
+
+					let diags = currentDiagnostics.get(matchedUri);
+					if (!diags) {
+						diags = [];
+						currentDiagnostics.set(matchedUri, diags);
+					}
+					diags.push(diagnostic);
+				}
+			}
+
+			// Send diagnostics to client
+			for (const [diagUri, diags] of currentDiagnostics) {
+				connection.sendDiagnostics({ uri: diagUri, diagnostics: diags });
+				if (diags.length > 0) {
+					filesWithDiagnostics.add(diagUri);
+				} else {
+					filesWithDiagnostics.delete(diagUri);
+				}
+			}
+
+			// Cleanup the temp files
+			try {
+				await fs.promises.rm(tempDir, { recursive: true, force: true });
+			} catch (err) {
+				// Ignore cleanup errors
+			}
+		});
+
+	} catch (e) {
+		connection.console.error(`Error in validation: ${e}`);
+		try {
+			await fs.promises.rm(tempDir, { recursive: true, force: true });
+		} catch (err) {
+			// Ignore cleanup errors
+		}
+	}
+}
+
+function getDiagnosticRange(lineContent: string, lineNum: number, colStart: number): Range {
+	if (colStart < 0 || !lineContent || colStart >= lineContent.length) {
+		return Range.create(lineNum, 0, lineNum, lineContent ? lineContent.length : 1);
+	}
+	let colEnd = colStart;
+	const wordChar = /^[a-zA-Z0-9_]$/;
+	if (wordChar.test(lineContent[colStart])) {
+		while (colEnd < lineContent.length && wordChar.test(lineContent[colEnd])) {
+			colEnd++;
+		}
+	} else {
+		colEnd = colStart + 1;
+	}
+	return Range.create(lineNum, colStart, lineNum, colEnd);
 }
 
 connection.onDidChangeWatchedFiles(_change => {
@@ -210,40 +385,59 @@ connection.onDidChangeWatchedFiles(_change => {
 });
 
 // This handler provides the initial list of the completion items.
-connection.onCompletion(
-	(_textDocumentPosition: TextDocumentPositionParams): CompletionItem[] => {
-		// The pass parameter contains the position of the text document in
-		// which code complete got requested. For the example we ignore this
-		// info and always provide the same completion items.
-		return [
-			{
-				label: 'TypeScript',
-				kind: CompletionItemKind.Text,
-				data: 1
-			},
-			{
-				label: 'JavaScript',
-				kind: CompletionItemKind.Text,
-				data: 2
-			}
-		];
+connection.onCompletion((params): CompletionItem[] => {
+	const document = documents.get(params.textDocument.uri);
+	if (document) {
+		return getCompletions(document);
 	}
-);
+	return [];
+});
 
-// This handler resolves additional information for the item selected in
-// the completion list.
-connection.onCompletionResolve(
-	(item: CompletionItem): CompletionItem => {
-		if (item.data === 1) {
-			item.detail = 'TypeScript details';
-			item.documentation = 'TypeScript documentation';
-		} else if (item.data === 2) {
-			item.detail = 'JavaScript details';
-			item.documentation = 'JavaScript documentation';
-		}
-		return item;
+// This handler resolves additional information for the item selected in the completion list.
+connection.onCompletionResolve((item: CompletionItem): CompletionItem => {
+	return item;
+});
+
+// Document Symbol Handler
+connection.onDocumentSymbol((params): DocumentSymbol[] => {
+	const document = documents.get(params.textDocument.uri);
+	if (document) {
+		return parseDocumentSymbols(document);
 	}
-);
+	return [];
+});
+
+// Go to Definition Handler
+connection.onDefinition((params) => {
+	const document = documents.get(params.textDocument.uri);
+	if (!document) {
+		return null;
+	}
+
+	// Extract the word under cursor
+	const text = document.getText();
+	const offset = document.offsetAt(params.position);
+	
+	let start = offset;
+	while (start > 0 && /[a-zA-Z0-9_]/.test(text[start - 1])) {
+		start--;
+	}
+	let end = offset;
+	while (end < text.length && /[a-zA-Z0-9_]/.test(text[end])) {
+		end++;
+	}
+
+	const word = text.slice(start, end);
+	const range = findDefinition(document, word);
+	if (range) {
+		return {
+			uri: document.uri,
+			range
+		} satisfies Location;
+	}
+
+	return null;
+});
 
 // Make the text document manager listen on the connection
 // for open, change and close text document events

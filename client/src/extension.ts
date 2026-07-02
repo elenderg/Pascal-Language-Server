@@ -33,18 +33,21 @@ export function activate(context: ExtensionContext) {
 
 	// Options to control the language client
 	const clientOptions: LanguageClientOptions = {
-		// Register the server for plain text documents
-		documentSelector: [{ scheme: 'file', language: 'plaintext' }],
+		// Register the server for Pascal documents
+		documentSelector: [
+			{ scheme: 'file', language: 'pascal' },
+			{ scheme: 'untitled', language: 'pascal' }
+		],
 		synchronize: {
-			// Notify the server about file changes to '.clientrc files contained in the workspace
-			fileEvents: workspace.createFileSystemWatcher('**/.clientrc')
+			// Notify the server about file changes to Pascal files contained in the workspace
+			fileEvents: workspace.createFileSystemWatcher('**/*.{pas,pp,inc,dpr,lpr}')
 		}
 	};
 
 	// Create the language client and start the client.
 	client = new LanguageClient(
-		'languageServerExample',
-		'Language Server Example',
+		'pascalLanguageServer',
+		'Pascal Language Server',
 		serverOptions,
 		clientOptions
 	);

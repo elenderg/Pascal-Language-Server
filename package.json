@@ -1,46 +1,84 @@
 {
-	"name": "lsp-sample",
-	"description": "A language server example",
-	"author": "Microsoft Corporation",
+	"name": "pascal-lsp",
+	"displayName": "Pascal Language Server",
+	"description": "Pascal Language Server powered by Free Pascal Compiler (FPC)",
+	"author": "Antigravity",
 	"license": "MIT",
 	"version": "1.0.0",
 	"repository": {
 		"type": "git",
-		"url": "https://github.com/Microsoft/vscode-extension-samples"
+		"url": "https://github.com/elenderg/Pascal-Language-Server"
 	},
-	"publisher": "vscode-samples",
-	"categories": [],
+	"publisher": "antigravity",
+	"categories": [
+		"Programming Languages"
+	],
 	"keywords": [
-		"multi-root ready"
+		"pascal",
+		"free pascal",
+		"fpc",
+		"lsp"
 	],
 	"engines": {
 		"vscode": "^1.100.0"
 	},
 	"activationEvents": [
-		"onLanguage:plaintext"
+		"onLanguage:pascal"
 	],
 	"main": "./client/out/extension",
 	"contributes": {
+		"languages": [
+			{
+				"id": "pascal",
+				"aliases": [
+					"Pascal",
+					"pascal"
+				],
+				"extensions": [
+					".pas",
+					".pp",
+					".inc",
+					".dpr",
+					".lpr"
+				],
+				"configuration": "./language-configuration.json"
+			}
+		],
 		"configuration": {
 			"type": "object",
-			"title": "Example configuration",
+			"title": "Pascal Language Server Configuration",
 			"properties": {
-				"languageServerExample.maxNumberOfProblems": {
-					"scope": "resource",
-					"type": "number",
-					"default": 100,
-					"description": "Controls the maximum number of problems produced by the server."
+				"pascal.compilerPath": {
+					"scope": "machine-overridable",
+					"type": "string",
+					"default": "fpc",
+					"description": "Path to the Free Pascal Compiler executable (e.g. fpc or C:\\lazarus64\\fpc\\3.2.2\\bin\\x86_64-win64\\fpc.exe)."
 				},
-				"languageServerExample.trace.server": {
-					"scope": "window",
+				"pascal.compilerOptions": {
+					"scope": "resource",
+					"type": "array",
+					"items": {
+						"type": "string"
+					},
+					"default": [],
+					"description": "Additional command line options to pass to fpc (e.g. -Fu search paths)."
+				},
+				"pascal.checkTrigger": {
+					"scope": "resource",
 					"type": "string",
 					"enum": [
-						"off",
-						"messages",
-						"verbose"
+						"onSave",
+						"onChange",
+						"off"
 					],
-					"default": "off",
-					"description": "Traces the communication between VS Code and the language server."
+					"default": "onSave",
+					"description": "When to run Free Pascal Compiler diagnostics."
+				},
+				"pascal.onChangeDebounceMs": {
+					"scope": "resource",
+					"type": "number",
+					"default": 700,
+					"description": "Debounce time in milliseconds before running the compiler when editing. Only applies when checkTrigger is onChange."
 				}
 			}
 		}
