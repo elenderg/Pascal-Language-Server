@@ -31,7 +31,10 @@ import * as url from 'url';
 import {
 	parseDocumentSymbols,
 	getCompletions,
-	findDefinition
+	findDefinition,
+	findTypeDefinition,
+	findImplementation,
+	findReferences
 } from './pascalParser';
 
 // Create a connection for the server, using Node's IPC as a transport.
@@ -64,6 +67,10 @@ connection.onInitialize((params: InitializeParams) => {
 				resolveProvider: true
 			},
 			definitionProvider: true,
+			typeDefinitionProvider: true,
+			implementationProvider: true,
+			referencesProvider: true,
+			hoverProvider: true,
 			documentSymbolProvider: true
 		}
 	};
@@ -306,6 +313,7 @@ async function validateTextDocument(textDocument: TextDocument): Promise<void> {
 							}
 						} catch (e) {
 							// ignore
+							console.log(e);
 						}
 					}
 
@@ -350,6 +358,7 @@ async function validateTextDocument(textDocument: TextDocument): Promise<void> {
 				await fs.promises.rm(tempDir, { recursive: true, force: true });
 			} catch (err) {
 				// Ignore cleanup errors
+				console.log(err);
 			}
 		});
 
@@ -359,6 +368,7 @@ async function validateTextDocument(textDocument: TextDocument): Promise<void> {
 			await fs.promises.rm(tempDir, { recursive: true, force: true });
 		} catch (err) {
 			// Ignore cleanup errors
+			console.log(err);
 		}
 	}
 }
@@ -407,16 +417,9 @@ connection.onDocumentSymbol((params): DocumentSymbol[] => {
 	return [];
 });
 
-// Go to Definition Handler
-connection.onDefinition((params) => {
-	const document = documents.get(params.textDocument.uri);
-	if (!document) {
-		return null;
-	}
-
-	// Extract the word under cursor
+function getWordAtPosition(document: TextDocument, position: { line: number, character: number }): string {
 	const text = document.getText();
-	const offset = document.offsetAt(params.position);
+	const offset = document.offsetAt(position);
 	
 	let start = offset;
 	while (start > 0 && /[a-zA-Z0-9_]/.test(text[start - 1])) {
@@ -427,13 +430,104 @@ connection.onDefinition((params) => {
 		end++;
 	}
 
-	const word = text.slice(start, end);
+	return text.slice(start, end);
+}
+
+// Go to Definition Handler
+connection.onDefinition((params) => {
+	const document = documents.get(params.textDocument.uri);
+	if (!document) {
+		return null;
+	}
+
+	const word = getWordAtPosition(document, params.position);
 	const range = findDefinition(document, word);
 	if (range) {
 		return {
 			uri: document.uri,
 			range
 		} satisfies Location;
+	}
+
+	return null;
+});
+
+// Go to Type Definition Handler
+connection.onTypeDefinition((params) => {
+	const document = documents.get(params.textDocument.uri);
+	if (!document) {
+		return null;
+	}
+
+	const word = getWordAtPosition(document, params.position);
+	const range = findTypeDefinition(document, word);
+	if (range) {
+		return {
+			uri: document.uri,
+			range
+		} satisfies Location;
+	}
+
+	return null;
+});
+
+// Go to Implementation Handler
+connection.onImplementation((params) => {
+	const document = documents.get(params.textDocument.uri);
+	if (!document) {
+		return null;
+	}
+
+	const word = getWordAtPosition(document, params.position);
+	const ranges = findImplementation(document, word);
+	if (ranges && ranges.length > 0) {
+		return ranges.map(range => ({
+			uri: document.uri,
+			range
+		} satisfies Location));
+	}
+
+	return null;
+});
+
+// Find References Handler
+connection.onReferences((params) => {
+	const document = documents.get(params.textDocument.uri);
+	if (!document) {
+		return null;
+	}
+
+	const word = getWordAtPosition(document, params.position);
+	const includeDeclaration = params.context.includeDeclaration;
+	const ranges = findReferences(document, word, includeDeclaration);
+	return ranges.map(range => ({
+		uri: document.uri,
+		range
+	} satisfies Location));
+});
+
+// Hover Handler
+connection.onHover((params) => {
+	const document = documents.get(params.textDocument.uri);
+	if (!document) {
+		return null;
+	}
+
+	const word = getWordAtPosition(document, params.position);
+	const defRange = findDefinition(document, word);
+	if (defRange) {
+		const docLines = document.getText().split(/\r?\n/);
+		const lineContent = docLines[defRange.start.line];
+		return {
+			contents: {
+				kind: 'markdown',
+				value: [
+					'```pascal',
+					lineContent.trim(),
+					'```'
+				].join('\n')
+			}
+		};
 	}
 
 	return null;

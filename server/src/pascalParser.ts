@@ -423,3 +423,128 @@ export function getCompletions(document: TextDocument): CompletionItem[] {
 
 	return items;
 }
+
+export function findTypeDefinition(document: TextDocument, word: string): Range | null {
+	// First locate the variable/symbol declaration
+	const defRange = findDefinition(document, word);
+	if (!defRange) {
+		return null;
+	}
+
+	const text = document.getText();
+	const cleanText = stripCommentsAndStrings(text);
+	const lines = cleanText.split(/\r?\n/);
+	const lineContent = lines[defRange.start.line];
+
+	// Search for colon (:) after the identifier to find type
+	const idx = lineContent.toLowerCase().indexOf(word.toLowerCase());
+	if (idx === -1) {
+		return null;
+	}
+
+	const searchArea = lineContent.slice(idx + word.length);
+	const colonIdx = searchArea.indexOf(':');
+	if (colonIdx === -1) {
+		// Maybe it's a const, type alias, or function return type.
+		// If it's a type alias like `TMyInt = Integer;`, find type of `Integer`
+		const eqIdx = searchArea.indexOf('=');
+		if (eqIdx !== -1) {
+			const typePart = searchArea.slice(eqIdx + 1).trim();
+			const typeWordMatch = /^[a-zA-Z_][a-zA-Z0-9_]*/.exec(typePart);
+			if (typeWordMatch) {
+				return findDefinition(document, typeWordMatch[0]);
+			}
+		}
+		// If it's a function return type, search for `:` on that line
+		const lineColonIdx = lineContent.indexOf(':');
+		if (lineColonIdx !== -1) {
+			const typePart = lineContent.slice(lineColonIdx + 1).trim();
+			const typeWordMatch = /^[a-zA-Z_][a-zA-Z0-9_]*/.exec(typePart);
+			if (typeWordMatch) {
+				return findDefinition(document, typeWordMatch[0]);
+			}
+		}
+		return null;
+	}
+
+	// Extract the type identifier
+	const typeArea = searchArea.slice(colonIdx + 1).trim();
+	const typeMatch = /^[a-zA-Z_][a-zA-Z0-9_]*/.exec(typeArea);
+	if (!typeMatch) {
+		return null;
+	}
+
+	const typeName = typeMatch[0];
+	// Go to definition of the typeName
+	return findDefinition(document, typeName);
+}
+
+export function findImplementation(document: TextDocument, word: string): Range[] {
+	if (!word || !/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(word)) {
+		return [];
+	}
+
+	const text = document.getText();
+	const cleanText = stripCommentsAndStrings(text);
+	const lines = cleanText.split(/\r?\n/);
+	const escaped = escapeRegex(word);
+	const results: Range[] = [];
+
+	// Search for class method implementation: ClassName.word
+	const classMethodRegex = new RegExp('\\b(procedure|function|constructor|destructor)\\s+([a-zA-Z0-9_]+)\\s*\\.\\s*' + escaped + '\\b', 'i');
+
+	for (let lineNum = 0; lineNum < lines.length; lineNum++) {
+		const line = lines[lineNum];
+		if (classMethodRegex.test(line)) {
+			const idx = line.toLowerCase().indexOf(word.toLowerCase());
+			if (idx !== -1) {
+				results.push(Range.create(lineNum, idx, lineNum, idx + word.length));
+			}
+		}
+	}
+
+	// If no class method implementations are found, fallback to definition
+	if (results.length === 0) {
+		const defRange = findDefinition(document, word);
+		if (defRange) {
+			results.push(defRange);
+		}
+	}
+
+	return results;
+}
+
+export function findReferences(document: TextDocument, word: string, includeDeclaration: boolean): Range[] {
+	if (!word || !/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(word)) {
+		return [];
+	}
+
+	const text = document.getText();
+	const cleanText = stripCommentsAndStrings(text);
+	const lines = cleanText.split(/\r?\n/);
+	const escaped = escapeRegex(word);
+	const results: Range[] = [];
+
+	const defRange = findDefinition(document, word);
+	const refRegex = new RegExp('\\b' + escaped + '\\b', 'gi');
+
+	for (let lineNum = 0; lineNum < lines.length; lineNum++) {
+		const line = lines[lineNum];
+		let match;
+		while ((match = refRegex.exec(line)) !== null) {
+			const startChar = match.index;
+			const endChar = startChar + word.length;
+
+			// Skip the declaration if includeDeclaration is false
+			if (!includeDeclaration && defRange) {
+				if (lineNum === defRange.start.line && startChar === defRange.start.character) {
+					continue;
+				}
+			}
+
+			results.push(Range.create(lineNum, startChar, lineNum, endChar));
+		}
+	}
+
+	return results;
+}

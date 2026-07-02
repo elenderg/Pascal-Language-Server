@@ -9,8 +9,7 @@
 		"sourceMap": true,
 		"strict": true,
 		"outDir": "out",
-		"rootDir": "src",
-		"ignoreDeprecations": "6.0"
+		"rootDir": "src"
 	},
 	"include": [
 		"src"

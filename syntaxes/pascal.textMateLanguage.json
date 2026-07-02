@@ -1,0 +1,134 @@
+{
+	"$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+	"name": "Pascal",
+	"scopeName": "source.pascal",
+	"fileTypes": [
+		"pas",
+		"pp",
+		"inc",
+		"dpr",
+		"lpr"
+	],
+	"patterns": [
+		{
+			"include": "#comments"
+		},
+		{
+			"include": "#strings"
+		},
+		{
+			"include": "#numbers"
+		},
+		{
+			"include": "#keywords"
+		},
+		{
+			"include": "#types"
+		},
+		{
+			"include": "#constants"
+		},
+		{
+			"include": "#operators"
+		}
+	],
+	"repository": {
+		"comments": {
+			"patterns": [
+				{
+					"name": "comment.line.double-slash.pascal",
+					"match": "//.*$"
+				},
+				{
+					"name": "comment.block.curly.pascal",
+					"begin": "\\{",
+					"end": "\\}"
+				},
+				{
+					"name": "comment.block.parenthesis.pascal",
+					"begin": "\\(\\* ",
+					"end": "\\*\\)"
+				}
+			]
+		},
+		"strings": {
+			"patterns": [
+				{
+					"name": "string.quoted.single.pascal",
+					"begin": "'",
+					"end": "'",
+					"patterns": [
+						{
+							"name": "constant.character.escape.pascal",
+							"match": "''"
+						}
+					]
+				}
+			]
+		},
+		"numbers": {
+			"patterns": [
+				{
+					"name": "constant.numeric.hex.pascal",
+					"match": "\\$[a-fA-F0-9]+\\b"
+				},
+				{
+					"name": "constant.numeric.decimal.pascal",
+					"match": "\\b[0-9]+(?:\\.[0-9]+)?\\b"
+				}
+			]
+		},
+		"keywords": {
+			"patterns": [
+				{
+					"name": "keyword.control.pascal",
+					"match": "\\b(?i:if|then|else|for|to|downto|do|while|repeat|until|case|of|with|try|finally|except|break|continue|exit)\\b"
+				},
+				{
+					"name": "keyword.other.pascal",
+					"match": "\\b(?i:begin|end|var|const|type|procedure|function|constructor|destructor|program|unit|uses|interface|implementation|initialization|finalization|class|record|object|library|inline|uses)\\b"
+				},
+				{
+					"name": "storage.modifier.pascal",
+					"match": "\\b(?i:public|private|protected|published|override|virtual|abstract|overload|stdcall|cdecl|pascal|register|inherited|strict)\\b"
+				}
+			]
+		},
+		"types": {
+			"patterns": [
+				{
+					"name": "storage.type.pascal",
+					"match": "\\b(?i:integer|real|boolean|char|string|double|single|word|byte|cardinal|longint|int64|ansistring|widestring|unicodestring|tobject|pointer)\\b"
+				}
+			]
+		},
+		"constants": {
+			"patterns": [
+				{
+					"name": "constant.language.pascal",
+					"match": "\\b(?i:true|false|nil)\\b"
+				}
+			]
+		},
+		"operators": {
+			"patterns": [
+				{
+					"name": "keyword.operator.logical.pascal",
+					"match": "\\b(?i:and|or|not|xor|shl|shr|div|mod|in|is|as)\\b"
+				},
+				{
+					"name": "keyword.operator.comparison.pascal",
+					"match": "=|<|>|<=|>=|<>"
+				},
+				{
+					"name": "keyword.operator.assignment.pascal",
+					"match": ":="
+				},
+				{
+					"name": "keyword.operator.arithmetic.pascal",
+					"match": "\\+|-|\\*|/"
+				}
+			]
+		}
+	}
+}
