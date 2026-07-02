@@ -44,6 +44,13 @@
 				"configuration": "./language-configuration.json"
 			}
 		],
+		"grammars": [
+			{
+				"language": "pascal",
+				"scopeName": "source.pascal",
+				"path": "./syntaxes/pascal.textMateLanguage.json"
+			}
+		],
 		"configuration": {
 			"type": "object",
 			"title": "Pascal Language Server Configuration",
