@@ -1,5 +1,5 @@
 import { Range } from 'vscode-languageserver/node';
-import { RecursiveASTVisitor, ASTVisitorVoid } from './ast';
+import { RecursiveASTVisitor, ASTVisitorVoid } from './ast/visitor';
 import type {
 	ProgramNode,
 	UnitNode,

@@ -212,8 +212,8 @@ export function hover(document: PascalDocument, position: Position): Hover | nul
 		const subprogram = symbol as import('./compiler/symbols').SubprogramSymbol;
 		const params = subprogram.parameters.map(p => {
 			let dir = 'var';
-			if (p.direction === 'value') dir = 'const';
-			else if (p.direction === 'out') dir = 'out';
+			if (p.direction === 'value') {dir = 'const';}
+			else if (p.direction === 'out') {dir = 'out';}
 			return `${dir} ${p.name}: ${p.type.kind}`;
 		}).join(', ');
 		lines.push(`Parameters: ${params}`);
@@ -571,7 +571,18 @@ function symbolKindToCompletionKind(kind: SymbolKind): CompletionItemKind {
 }
 
 function findScopeAtPosition(document: PascalDocument, position: Position): import('./compiler/scopes').Scope | undefined {
+	// TODO: mapear escopos a posições
+	const node = findNodeAtPosition(document, position); // Encontrar o nó AST na posição
+	if(node === undefined) {
+		return undefined;
+	}
+	
+	// Subir na árvore AST até encontrar um nó com escopo associado
+	
+		
+	
+
+
 	// Simplificação: retorna o rootScope
-	// Implementação completa precisaria mapear escopos a posições
 	return document.rootScope;
 }
