@@ -31,8 +31,11 @@ import {
 	TypeAliasDeclarationNode,
 	EnumTypeDeclarationNode,
 	PropertyDeclarationNode,
+	ASTNode,
 } from './compiler/ast';
+import type { Scope } from './compiler/scopes';
 import { Symbol, SymbolKind } from './compiler/symbols';
+import { AliasType, ArrayType, ClassType, EnumType, InterfaceType, PointerType, PrimitiveType, RecordType, SubprogramType, UnresolvedType, VoidType } from './compiler/types';
 
 // ---------------------------------------------------------------------------
 // Semantic LSP Features - todas baseadas em análise semântica (AST + símbolos)
@@ -89,26 +92,71 @@ export function goToDefinition(document: PascalDocument, position: Position): Lo
 		return null;
 	}
 
-	// Se for um IdentifierNode com símbolo resolvido
 	if (node instanceof IdentifierNode && node.symbol !== undefined) {
-		const declNode = node.symbol.declaringNode;
-		if (declNode !== undefined) {
+		const target = node.symbol.declaringNode;
+		if (target !== undefined) {
 			return {
 				uri: document.uri,
-				range: toLSPRange(declNode.range),
+				range: toLSPRange(target.range),
 			};
 		}
 	}
 
-	// Se for uma DeclarationNode, retorna ela mesma
-	if (node instanceof DeclarationNode) {
+	if (node instanceof DeclarationNode && node.symbol !== undefined) {
 		return {
 			uri: document.uri,
-			range: toLSPRange(node.range),
+			range: node.symbol.range,
 		};
 	}
 
 	return null;
+}
+
+export function goToTypeDefinition(document: PascalDocument, position: Position): Location | null {
+	const node = findNodeAtPosition(document, position);
+	if (node === undefined) {
+		return null;
+	}
+
+	let typeNode: import('./compiler/types').PascalType | undefined;
+	if (node instanceof IdentifierNode && node.symbol !== undefined) {
+		typeNode = node.symbol.type;
+	} else if (node instanceof DeclarationNode && node.symbol !== undefined) {
+		typeNode = node.symbol.type;
+	}
+
+	if (typeNode === undefined || typeNode.declaringSymbol === undefined) {
+		return null;
+	}
+
+	return {
+		uri: typeNode.declaringSymbol.uri,
+		range: typeNode.declaringSymbol.range,
+	};
+}
+
+export function goToImplementation(document: PascalDocument, position: Position): Location[] | null {
+	const node = findNodeAtPosition(document, position);
+	if (node === undefined) {
+		return null;
+	}
+
+	let symbol: Symbol | undefined;
+	if (node instanceof IdentifierNode && node.symbol !== undefined) {
+		symbol = node.symbol;
+	} else if (node instanceof DeclarationNode && node.symbol !== undefined) {
+		symbol = node.symbol;
+	}
+
+	if (symbol === undefined || symbol.kind !== SymbolKind.Subprogram) {
+		return null;
+	}
+
+	const implementations: Location[] = [];
+	if (symbol.declaringNode !== undefined) {
+		implementations.push({ uri: document.uri, range: toLSPRange(symbol.declaringNode.range) });
+	}
+	return implementations;
 }
 
 /**
@@ -200,9 +248,7 @@ export function hover(document: PascalDocument, position: Position): Hover | nul
 
 	// Nome e tipo
 	lines.push(`**${symbol.name}**`);
-	if (symbol.type !== undefined) {
-		lines.push(`Type: \`${symbol.type.kind}\``);
-	}
+	lines.push(`Type: \`${describeType(symbol.type)}\``);
 
 	// Kind
 	lines.push(`Kind: \`${symbol.kind}\``);
@@ -214,11 +260,11 @@ export function hover(document: PascalDocument, position: Position): Hover | nul
 			let dir = 'var';
 			if (p.direction === 'value') {dir = 'const';}
 			else if (p.direction === 'out') {dir = 'out';}
-			return `${dir} ${p.name}: ${p.type.kind}`;
+			return `${dir} ${p.name}: ${describeType(p.type)}`;
 		}).join(', ');
 		lines.push(`Parameters: ${params}`);
 		if (subprogram.returnType !== undefined) {
-			lines.push(`Returns: \`${subprogram.returnType.kind}\``);
+			lines.push(`Returns: \`${describeType(subprogram.returnType)}\``);
 		}
 	}
 
@@ -239,37 +285,31 @@ export function getCompletion(document: PascalDocument, position: Position): Com
 		return [];
 	}
 
-	// Encontrar o escopo na posição
 	const scope = findScopeAtPosition(document, position);
 	if (scope === undefined) {
 		return [];
 	}
 
 	const items: CompletionItem[] = [];
-
-	// Coletar símbolos visíveis no escopo
-	for (const symbol of scope.getSymbols()) {
+	const seen = new Set<string>();
+	const addSymbol = (symbol: Symbol): void => {
+		if (seen.has(symbol.name)) {
+			return;
+		}
+		seen.add(symbol.name);
 		items.push({
 			label: symbol.name,
 			kind: symbolKindToCompletionKind(symbol.kind),
-			detail: symbol.type.kind,
+			detail: describeType(symbol.type),
 		});
-	}
+	};
 
-	// Adicionar símbolos do escopo pai (hierarquia)
-	let parentScope = scope.parent;
-	while (parentScope !== undefined) {
-		for (const symbol of parentScope.getSymbols()) {
-			// Evitar duplicatas
-			if (!items.some(item => item.label === symbol.name)) {
-				items.push({
-					label: symbol.name,
-					kind: symbolKindToCompletionKind(symbol.kind),
-					detail: symbol.type.kind,
-				});
-			}
+	let currentScope: Scope | undefined = scope;
+	while (currentScope !== undefined) {
+		for (const symbol of currentScope.getSymbols()) {
+			addSymbol(symbol);
 		}
-		parentScope = parentScope.parent;
+		currentScope = currentScope.parent;
 	}
 
 	return items;
@@ -541,6 +581,46 @@ function toLSPRange(range: import('./compiler/ast').SourceRange): Range {
 	return Range.create(range.start.line, range.start.character, range.end.line, range.end.character);
 }
 
+function describeType(type: import('./compiler/types').PascalType | undefined): string {
+	if (type === undefined) {
+		return 'unknown';
+	}
+	if (type instanceof PrimitiveType) {
+		return type.name;
+	}
+	if (type instanceof ClassType) {
+		return type.declaringSymbol?.name ?? 'class';
+	}
+	if (type instanceof RecordType) {
+		return type.declaringSymbol?.name ?? 'record';
+	}
+	if (type instanceof InterfaceType) {
+		return type.declaringSymbol?.name ?? 'interface';
+	}
+	if (type instanceof AliasType) {
+		return describeType(type.resolveAlias());
+	}
+	if (type instanceof EnumType) {
+		return type.declaringSymbol?.name ?? 'enum';
+	}
+	if (type instanceof ArrayType) {
+		return 'array';
+	}
+	if (type instanceof PointerType) {
+		return '^' + describeType(type.pointedType);
+	}
+	if (type instanceof SubprogramType) {
+		return 'subprogram';
+	}
+	if (type instanceof UnresolvedType) {
+		return type.name;
+	}
+	if (type instanceof VoidType) {
+		return 'void';
+	}
+	return type.kind;
+}
+
 function symbolKindToCompletionKind(kind: SymbolKind): CompletionItemKind {
 	switch (kind) {
 		case SymbolKind.Variable:
@@ -570,19 +650,20 @@ function symbolKindToCompletionKind(kind: SymbolKind): CompletionItemKind {
 	}
 }
 
-function findScopeAtPosition(document: PascalDocument, position: Position): import('./compiler/scopes').Scope | undefined {
-	// TODO: mapear escopos a posições
-	const node = findNodeAtPosition(document, position); // Encontrar o nó AST na posição
-	if(node === undefined) {
+function findScopeAtPosition(document: PascalDocument, position: Position): Scope | undefined {
+	if (document.rootScope === undefined) {
 		return undefined;
 	}
-	
-	// Subir na árvore AST até encontrar um nó com escopo associado
-	
-		
-	
-
-
-	// Simplificação: retorna o rootScope
+	const node = findNodeAtPosition(document, position);
+	if (node === undefined) {
+		return document.rootScope;
+	}
+	let current: ASTNode | undefined = node;
+	while (current !== undefined) {
+		if ('scope' in current && current.scope !== undefined) {
+			return current.scope as Scope;
+		}
+		current = current.parent;
+	}
 	return document.rootScope;
 }

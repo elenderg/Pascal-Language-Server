@@ -35,9 +35,11 @@ import {
 	getCompletion,
 	rename,
 	getDocumentSymbols,
+	goToTypeDefinition,
+	goToImplementation,
 } from './semanticLSP';
-import { PascalDocument, PascalWorkspace } from './compiler/models';
-import { SemanticVisitor } from './compiler/semantic';
+import { PascalDocument, PascalWorkspace, DocumentKind, AnalysisPhase } from './compiler/models';
+import { parsePascalDocument } from './compiler/parser';
 
 // Create a connection for the server, using Node's IPC as a transport.
 // Also include all preview / proposed LSP features.
@@ -46,26 +48,24 @@ const connection = createConnection(ProposedFeatures.all);
 // Create a simple text document manager.
 const documents = new TextDocuments(TextDocument);
 
-// Cache de PascalDocument para análise semântica
-const pascalDocuments = new Map<string, PascalDocument>();
+const workspace = new PascalWorkspace();
 
 function getPascalDocument(textDocument: TextDocument): PascalDocument {
-	let pascalDoc = pascalDocuments.get(textDocument.uri);
-	if (pascalDoc === undefined) {
-		pascalDoc = new PascalDocument(textDocument.uri, textDocument.getText(), 0);
-		pascalDocuments.set(textDocument.uri, pascalDoc);
-	} else {
-		// Atualizar texto e versão se mudou
-		if (pascalDoc.text !== textDocument.getText()) {
-			pascalDoc.text = textDocument.getText();
-			pascalDoc.version = textDocument.version;
-			// Resetar análise semântica - precisaria re-parsear
-			pascalDoc.ast = undefined;
-			pascalDoc.rootScope = undefined;
-			pascalDoc.unitSymbol = undefined;
-		}
+	return workspace.openDocument(textDocument.uri, textDocument.getText(), textDocument.version);
+}
+
+function ensureSemanticAnalysis(document: PascalDocument): PascalDocument {
+	if (document.ast === undefined) {
+		const ast = parsePascalDocument(TextDocument.create(document.uri, 'pascal', document.version, document.text));
+		document.setParsed(ast, ast.kind === 'Unit' ? DocumentKind.Unit : DocumentKind.Program);
 	}
-	return pascalDoc;
+	if (document.analysisPhase !== AnalysisPhase.Scoped && document.analysisPhase !== AnalysisPhase.Typed && document.analysisPhase !== AnalysisPhase.Complete) {
+		document.analyzeSemantic();
+	}
+	if (document.rootScope !== undefined && document.unitSymbol !== undefined) {
+		workspace.registerUnit(document);
+	}
+	return document;
 }
 
 let hasConfigurationCapability = false;
@@ -187,7 +187,7 @@ documents.onDidClose(e => {
 		proc.kill();
 		activeProcesses.delete(e.document.uri);
 	}
-	// Clear diagnostics for closed document
+	workspace.closeDocument(e.document.uri);
 	connection.sendDiagnostics({ uri: e.document.uri, diagnostics: [] });
 	filesWithDiagnostics.delete(e.document.uri);
 });
@@ -195,6 +195,10 @@ documents.onDidClose(e => {
 // The content of a text document has changed. This event is emitted
 // when the text document first opened or when its content has changed.
 documents.onDidChangeContent(async change => {
+	const document = workspace.updateDocument(change.document.uri, change.document.getText(), change.document.version);
+	if (document !== undefined) {
+		ensureSemanticAnalysis(document);
+	}
 	const settings = await getDocumentSettings(change.document.uri);
 	if (settings.checkTrigger === 'onChange') {
 		const existingTimer = validationTimers.get(change.document.uri);
@@ -210,10 +214,14 @@ documents.onDidChangeContent(async change => {
 });
 
 documents.onDidSave(change => {
+	const document = workspace.openDocument(change.document.uri, change.document.getText(), change.document.version);
+	ensureSemanticAnalysis(document);
 	validateTextDocument(change.document);
 });
 
 documents.onDidOpen(change => {
+	const document = workspace.openDocument(change.document.uri, change.document.getText(), change.document.version);
+	ensureSemanticAnalysis(document);
 	validateTextDocument(change.document);
 });
 
@@ -423,9 +431,7 @@ connection.onDidChangeWatchedFiles(_change => {
 connection.onCompletion((params): CompletionItem[] => {
 	const document = documents.get(params.textDocument.uri);
 	if (document) {
-		const pascalDoc = getPascalDocument(document);
-		// TODO: Executar análise semântica se necessário
-		// pascalDoc.analyzeSemantic();
+		const pascalDoc = ensureSemanticAnalysis(getPascalDocument(document));
 		return getCompletion(pascalDoc, params.position);
 	}
 	return [];
@@ -440,9 +446,7 @@ connection.onCompletionResolve((item: CompletionItem): CompletionItem => {
 connection.onDocumentSymbol((params): DocumentSymbol[] => {
 	const document = documents.get(params.textDocument.uri);
 	if (document) {
-		const pascalDoc = getPascalDocument(document);
-		// TODO: Executar análise semântica se necessário
-		// pascalDoc.analyzeSemantic();
+		const pascalDoc = ensureSemanticAnalysis(getPascalDocument(document));
 		return getDocumentSymbols(pascalDoc);
 	}
 	return [];
@@ -454,21 +458,26 @@ connection.onDefinition((params) => {
 	if (!document) {
 		return null;
 	}
-
-	const pascalDoc = getPascalDocument(document);
-	// TODO: Executar análise semântica se necessário
-	// pascalDoc.analyzeSemantic();
+	const pascalDoc = ensureSemanticAnalysis(getPascalDocument(document));
 	return goToDefinition(pascalDoc, params.position);
 });
 
-// Go to Type Definition Handler (não implementado ainda)
 connection.onTypeDefinition((params) => {
-	return null;
+	const document = documents.get(params.textDocument.uri);
+	if (!document) {
+		return null;
+	}
+	const pascalDoc = ensureSemanticAnalysis(getPascalDocument(document));
+	return goToTypeDefinition(pascalDoc, params.position);
 });
 
-// Go to Implementation Handler (não implementado ainda)
 connection.onImplementation((params) => {
-	return null;
+	const document = documents.get(params.textDocument.uri);
+	if (!document) {
+		return null;
+	}
+	const pascalDoc = ensureSemanticAnalysis(getPascalDocument(document));
+	return goToImplementation(pascalDoc, params.position);
 });
 
 // Find References Handler
@@ -477,10 +486,7 @@ connection.onReferences((params) => {
 	if (!document) {
 		return null;
 	}
-
-	const pascalDoc = getPascalDocument(document);
-	// TODO: Executar análise semântica se necessário
-	// pascalDoc.analyzeSemantic();
+	const pascalDoc = ensureSemanticAnalysis(getPascalDocument(document));
 	const includeDeclaration = params.context.includeDeclaration;
 	return findReferences(pascalDoc, params.position, includeDeclaration);
 });
@@ -491,10 +497,7 @@ connection.onHover((params) => {
 	if (!document) {
 		return null;
 	}
-
-	const pascalDoc = getPascalDocument(document);
-	// TODO: Executar análise semântica se necessário
-	// pascalDoc.analyzeSemantic();
+	const pascalDoc = ensureSemanticAnalysis(getPascalDocument(document));
 	return hover(pascalDoc, params.position);
 });
 
@@ -504,10 +507,7 @@ connection.onRenameRequest((params) => {
 	if (!document) {
 		return null;
 	}
-
-	const pascalDoc = getPascalDocument(document);
-	// TODO: Executar análise semântica se necessário
-	// pascalDoc.analyzeSemantic();
+	const pascalDoc = ensureSemanticAnalysis(getPascalDocument(document));
 	return rename(pascalDoc, params.position, params.newName);
 });
 
