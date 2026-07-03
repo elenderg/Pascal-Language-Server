@@ -13,7 +13,7 @@ import {
 	CompletionItem,
 	TextDocumentSyncKind,
 	InitializeResult,
-	Location,
+	//Location,
 	DocumentSymbol,
 	Range
 } from 'vscode-languageserver/node';
@@ -40,6 +40,15 @@ import {
 } from './semanticLSP';
 import { PascalDocument, PascalWorkspace, DocumentKind, AnalysisPhase } from './compiler/models';
 import { parsePascalDocument } from './compiler/parser';
+
+process.on("uncaughtException", err => {
+    console.error(err);
+});
+
+process.on("unhandledRejection", err => {
+    console.error(err);
+});
+
 
 // Create a connection for the server, using Node's IPC as a transport.
 // Also include all preview / proposed LSP features.

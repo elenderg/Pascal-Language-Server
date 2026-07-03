@@ -7,6 +7,7 @@ import { OverloadGroup, SubprogramSymbol as SubprogramSymbolClass } from './symb
 
 export enum ScopeKind {
 	Global = 'global',
+	Program = 'program',
 	Unit = 'unit',
 	InterfaceSection = 'interfaceSection',
 	ImplementationSection = 'implementationSection',
@@ -314,7 +315,19 @@ export class InterfaceScope extends BaseScope {
 }
 
 /**
- * Escopo raiz de uma unit ou program.
+ * Escopo raiz para programas Pascal simples.
+ * Não usa interface/implementation porque programas não possuem essas seções.
+ */
+export class ProgramScope extends BaseScope {
+	readonly kind = ScopeKind.Program as const;
+
+	constructor(name: string, parent?: Scope) {
+		super(name, parent);
+	}
+}
+
+/**
+ * Escopo raiz de uma unit.
  *
  * Cadeia de lookup (implementation):
  *   local → implementation → interface → uses → (parent global)

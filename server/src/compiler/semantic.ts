@@ -30,6 +30,7 @@ import type { PascalDocument } from './models';
 import {
 	Scope,
 	UnitScope,
+	ProgramScope,
 	GlobalScope,
 	LocalScope,
 	BlockScope,
@@ -144,8 +145,8 @@ export class SemanticVisitor extends RecursiveASTVisitor implements ASTVisitorVo
 	// ---------------------------------------------------------------------------
 
 	visitProgram(node: ProgramNode): void {
-		const unitScope = new UnitScope(node.name.name, new GlobalScope());
-		this.rootScope = unitScope;
+		const programScope = new ProgramScope(node.name.name, new GlobalScope());
+		this.rootScope = programScope;
 
 		const unitSymbol = new UnitSymbol(
 			node.name.name,
@@ -154,21 +155,16 @@ export class SemanticVisitor extends RecursiveASTVisitor implements ASTVisitorVo
 			node,
 		);
 		this.unitSymbol = unitSymbol;
-		unitSymbol.unitScope = unitScope;
+		unitSymbol.unitScope = programScope;
 
-		this.enterScope(unitScope);
-		this.enterScope(unitScope.getImplementationDeclarationScope());
-
-		unitScope.define(unitSymbol);
-
+		this.enterScope(programScope);
 		this.visitNodeChildren(node);
-
-		this.exitScope();
 		this.exitScope();
 	}
 
 	visitUnit(node: UnitNode): void {
-		const unitScope = new UnitScope(node.name.name, new GlobalScope());
+		const globalScope = new GlobalScope();
+		const unitScope = new UnitScope(node.name.name, globalScope);
 		this.rootScope = unitScope;
 
 		const unitSymbol = new UnitSymbol(
@@ -179,13 +175,14 @@ export class SemanticVisitor extends RecursiveASTVisitor implements ASTVisitorVo
 		);
 		this.unitSymbol = unitSymbol;
 		unitSymbol.unitScope = unitScope;
+		globalScope.define(unitSymbol);
 
-		this.enterScope(unitScope);
+		this.enterScope(unitScope.getInterfaceDeclarationScope());
+		this.visitNodeChildren(node.interfaceSection);
+		this.exitScope();
 
-		unitScope.define(unitSymbol);
-
-		this.visitNodeChildren(node);
-
+		this.enterScope(unitScope.getImplementationDeclarationScope());
+		this.visitNodeChildren(node.implementationSection);
 		this.exitScope();
 	}
 

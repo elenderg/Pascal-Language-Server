@@ -1,5 +1,6 @@
 import type { ProgramNode, UnitNode } from './ast';
 import { GlobalScope, UnitScope } from './scopes';
+import type { Scope } from './scopes';
 import type { UnitSymbol } from './symbols';
 import { SemanticVisitor } from './semantic';
 
@@ -44,7 +45,7 @@ export class PascalDocument {
 	/** Raiz da AST — ProgramNode ou UnitNode após o parse. */
 	ast: ProgramNode | UnitNode | undefined;
 	/** Escopo raiz construído pelo analisador semântico. */
-	rootScope: UnitScope | undefined;
+	rootScope: Scope | undefined;
 	/** Símbolo da unit/programa correspondente a este documento. */
 	unitSymbol: UnitSymbol | undefined;
 
@@ -83,7 +84,7 @@ export class PascalDocument {
 		this.analysisPhase = AnalysisPhase.Parsed;
 	}
 
-	setScoped(rootScope: UnitScope, unitSymbol: UnitSymbol): void {
+	setScoped(rootScope: Scope, unitSymbol: UnitSymbol): void {
 		this.rootScope = rootScope;
 		this.unitSymbol = unitSymbol;
 		this.analysisPhase = AnalysisPhase.Scoped;
@@ -110,7 +111,7 @@ export class PascalDocument {
 		const visitor = new SemanticVisitor(this);
 		visitor.analyze();
 
-		this.rootScope = visitor.getRootScope() as UnitScope | undefined;
+		this.rootScope = visitor.getRootScope();
 		this.unitSymbol = visitor.getUnitSymbol();
 
 		if (this.rootScope !== undefined && this.unitSymbol !== undefined) {
@@ -184,10 +185,12 @@ export class PascalWorkspace {
 	 * A ligação concreta de uses será feita pelo SemanticAnalyzer.
 	 */
 	registerUnit(doc: PascalDocument): void {
-		if (doc.rootScope === undefined || doc.unitSymbol === undefined) {
+		if (doc.kind !== DocumentKind.Unit || doc.rootScope === undefined || doc.unitSymbol === undefined) {
 			return;
 		}
-		this.globalScope.registerUnit(doc.unitSymbol.unitName, doc.rootScope);
+		if (doc.rootScope instanceof UnitScope) {
+			this.globalScope.registerUnit(doc.unitSymbol.unitName, doc.rootScope);
+		}
 	}
 
 	/**
