@@ -116,6 +116,31 @@ export class BlockScope extends BaseScope {
 	}
 }
 
+/** Escopo específico para corpo de procedure. */
+export class ProcedureScope extends LocalScope {
+	constructor(name: string, parent: Scope) {
+		super(name, parent);
+	}
+}
+
+/** Escopo específico para corpo de function. */
+export class FunctionScope extends LocalScope {
+	constructor(name: string, parent: Scope) {
+		super(name, parent);
+	}
+}
+
+/** Escopo específico para corpo de method em classe. */
+export class MethodScope extends LocalScope {
+	/** Referência ao escopo da classe onde o método está declarado. */
+	readonly classScope: ClassScope | undefined;
+
+	constructor(name: string, parent: Scope, classScope?: ClassScope) {
+		super(name, parent);
+		this.classScope = classScope;
+	}
+}
+
 /** Seção interface de uma unit — símbolos exportados via uses. */
 export class InterfaceSectionScope extends BaseScope {
 	readonly kind = ScopeKind.InterfaceSection as const;

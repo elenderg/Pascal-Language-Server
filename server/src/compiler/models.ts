@@ -1,6 +1,7 @@
 import type { ProgramNode, UnitNode } from './ast';
 import { GlobalScope, UnitScope } from './scopes';
 import type { UnitSymbol } from './symbols';
+import { SemanticVisitor } from './semantic';
 
 // ---------------------------------------------------------------------------
 // Modelos de documento e workspace
@@ -95,6 +96,26 @@ export class PascalDocument {
 
 	markComplete(): void {
 		this.analysisPhase = AnalysisPhase.Complete;
+	}
+
+	/**
+	 * Executa análise semântica no documento.
+	 * Cria árvore de escopos e tabela de símbolos a partir da AST.
+	 */
+	analyzeSemantic(): void {
+		if (this.ast === undefined || this.analysisPhase === AnalysisPhase.Scoped) {
+			return;
+		}
+
+		const visitor = new SemanticVisitor(this);
+		visitor.analyze();
+
+		this.rootScope = visitor.getRootScope() as UnitScope | undefined;
+		this.unitSymbol = visitor.getUnitSymbol();
+
+		if (this.rootScope !== undefined && this.unitSymbol !== undefined) {
+			this.setScoped(this.rootScope, this.unitSymbol);
+		}
 	}
 
 	get isAnalyzed(): boolean {

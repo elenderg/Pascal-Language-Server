@@ -126,7 +126,7 @@ export class RecordVariantCaseNode extends ASTNode {
 	constructor(
 		range: SourceRange,
 		labels: readonly ExpressionNode[],
-		fields: readonly TypeNode[],
+		fields: readonly DeclarationNode[],
 	) {
 		super(range);
 		this.labels = labels;

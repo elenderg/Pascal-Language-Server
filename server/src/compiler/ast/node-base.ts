@@ -1,5 +1,6 @@
 import { SourceRange } from './source-range';
 import type { ASTVisitor } from './visitor';
+import type { Symbol } from '../symbols';
 
 /** Nó base da AST. Mantém range, ligações pai/filho e dispatch de visitor. */
 export abstract class ASTNode {
@@ -51,7 +52,11 @@ export abstract class ASTNode {
 	}
 }
 
-export abstract class DeclarationNode extends ASTNode {}
+/** Nó de declaração com conexão para o símbolo semântico correspondente. */
+export abstract class DeclarationNode extends ASTNode {
+	/** Símbolo semântico criado pelo analisador semântico para esta declaração. */
+	symbol: Symbol | undefined;
+}
 
 export abstract class StatementNode extends ASTNode {}
 
