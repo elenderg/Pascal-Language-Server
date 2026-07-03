@@ -29,13 +29,15 @@ import * as os from 'os';
 import * as url from 'url';
 
 import {
-	parseDocumentSymbols,
-	getCompletions,
-	findDefinition,
-	findTypeDefinition,
-	findImplementation,
-	findReferences
-} from './pascalParser';
+	goToDefinition,
+	findReferences,
+	hover,
+	getCompletion,
+	rename,
+	getDocumentSymbols,
+} from './semanticLSP';
+import { PascalDocument, PascalWorkspace } from './compiler/models';
+import { SemanticVisitor } from './compiler/semantic';
 
 // Create a connection for the server, using Node's IPC as a transport.
 // Also include all preview / proposed LSP features.
@@ -43,6 +45,28 @@ const connection = createConnection(ProposedFeatures.all);
 
 // Create a simple text document manager.
 const documents = new TextDocuments(TextDocument);
+
+// Cache de PascalDocument para análise semântica
+const pascalDocuments = new Map<string, PascalDocument>();
+
+function getPascalDocument(textDocument: TextDocument): PascalDocument {
+	let pascalDoc = pascalDocuments.get(textDocument.uri);
+	if (pascalDoc === undefined) {
+		pascalDoc = new PascalDocument(textDocument.uri, textDocument.getText(), 0);
+		pascalDocuments.set(textDocument.uri, pascalDoc);
+	} else {
+		// Atualizar texto e versão se mudou
+		if (pascalDoc.text !== textDocument.getText()) {
+			pascalDoc.text = textDocument.getText();
+			pascalDoc.version = textDocument.version;
+			// Resetar análise semântica - precisaria re-parsear
+			pascalDoc.ast = undefined;
+			pascalDoc.rootScope = undefined;
+			pascalDoc.unitSymbol = undefined;
+		}
+	}
+	return pascalDoc;
+}
 
 let hasConfigurationCapability = false;
 let hasWorkspaceFolderCapability = false;
@@ -71,7 +95,8 @@ connection.onInitialize((params: InitializeParams) => {
 			implementationProvider: true,
 			referencesProvider: true,
 			hoverProvider: true,
-			documentSymbolProvider: true
+			documentSymbolProvider: true,
+			renameProvider: true
 		}
 	};
 	if (hasWorkspaceFolderCapability) {
@@ -398,7 +423,10 @@ connection.onDidChangeWatchedFiles(_change => {
 connection.onCompletion((params): CompletionItem[] => {
 	const document = documents.get(params.textDocument.uri);
 	if (document) {
-		return getCompletions(document);
+		const pascalDoc = getPascalDocument(document);
+		// TODO: Executar análise semântica se necessário
+		// pascalDoc.analyzeSemantic();
+		return getCompletion(pascalDoc, params.position);
 	}
 	return [];
 });
@@ -412,26 +440,13 @@ connection.onCompletionResolve((item: CompletionItem): CompletionItem => {
 connection.onDocumentSymbol((params): DocumentSymbol[] => {
 	const document = documents.get(params.textDocument.uri);
 	if (document) {
-		return parseDocumentSymbols(document);
+		const pascalDoc = getPascalDocument(document);
+		// TODO: Executar análise semântica se necessário
+		// pascalDoc.analyzeSemantic();
+		return getDocumentSymbols(pascalDoc);
 	}
 	return [];
 });
-
-function getWordAtPosition(document: TextDocument, position: { line: number, character: number }): string {
-	const text = document.getText();
-	const offset = document.offsetAt(position);
-	
-	let start = offset;
-	while (start > 0 && /[a-zA-Z0-9_]/.test(text[start - 1])) {
-		start--;
-	}
-	let end = offset;
-	while (end < text.length && /[a-zA-Z0-9_]/.test(text[end])) {
-		end++;
-	}
-
-	return text.slice(start, end);
-}
 
 // Go to Definition Handler
 connection.onDefinition((params) => {
@@ -440,53 +455,19 @@ connection.onDefinition((params) => {
 		return null;
 	}
 
-	const word = getWordAtPosition(document, params.position);
-	const range = findDefinition(document, word);
-	if (range) {
-		return {
-			uri: document.uri,
-			range
-		} satisfies Location;
-	}
-
-	return null;
+	const pascalDoc = getPascalDocument(document);
+	// TODO: Executar análise semântica se necessário
+	// pascalDoc.analyzeSemantic();
+	return goToDefinition(pascalDoc, params.position);
 });
 
-// Go to Type Definition Handler
+// Go to Type Definition Handler (não implementado ainda)
 connection.onTypeDefinition((params) => {
-	const document = documents.get(params.textDocument.uri);
-	if (!document) {
-		return null;
-	}
-
-	const word = getWordAtPosition(document, params.position);
-	const range = findTypeDefinition(document, word);
-	if (range) {
-		return {
-			uri: document.uri,
-			range
-		} satisfies Location;
-	}
-
 	return null;
 });
 
-// Go to Implementation Handler
+// Go to Implementation Handler (não implementado ainda)
 connection.onImplementation((params) => {
-	const document = documents.get(params.textDocument.uri);
-	if (!document) {
-		return null;
-	}
-
-	const word = getWordAtPosition(document, params.position);
-	const ranges = findImplementation(document, word);
-	if (ranges && ranges.length > 0) {
-		return ranges.map(range => ({
-			uri: document.uri,
-			range
-		} satisfies Location));
-	}
-
 	return null;
 });
 
@@ -497,13 +478,11 @@ connection.onReferences((params) => {
 		return null;
 	}
 
-	const word = getWordAtPosition(document, params.position);
+	const pascalDoc = getPascalDocument(document);
+	// TODO: Executar análise semântica se necessário
+	// pascalDoc.analyzeSemantic();
 	const includeDeclaration = params.context.includeDeclaration;
-	const ranges = findReferences(document, word, includeDeclaration);
-	return ranges.map(range => ({
-		uri: document.uri,
-		range
-	} satisfies Location));
+	return findReferences(pascalDoc, params.position, includeDeclaration);
 });
 
 // Hover Handler
@@ -513,24 +492,23 @@ connection.onHover((params) => {
 		return null;
 	}
 
-	const word = getWordAtPosition(document, params.position);
-	const defRange = findDefinition(document, word);
-	if (defRange) {
-		const docLines = document.getText().split(/\r?\n/);
-		const lineContent = docLines[defRange.start.line];
-		return {
-			contents: {
-				kind: 'markdown',
-				value: [
-					'```pascal',
-					lineContent.trim(),
-					'```'
-				].join('\n')
-			}
-		};
+	const pascalDoc = getPascalDocument(document);
+	// TODO: Executar análise semântica se necessário
+	// pascalDoc.analyzeSemantic();
+	return hover(pascalDoc, params.position);
+});
+
+// Rename Handler
+connection.onRenameRequest((params) => {
+	const document = documents.get(params.textDocument.uri);
+	if (!document) {
+		return null;
 	}
 
-	return null;
+	const pascalDoc = getPascalDocument(document);
+	// TODO: Executar análise semântica se necessário
+	// pascalDoc.analyzeSemantic();
+	return rename(pascalDoc, params.position, params.newName);
 });
 
 // Make the text document manager listen on the connection
