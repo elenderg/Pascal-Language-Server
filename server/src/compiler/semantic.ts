@@ -550,4 +550,128 @@ export class SemanticVisitor extends RecursiveASTVisitor implements ASTVisitorVo
 	visitVarSection(node: VarSectionNode): void {
 		this.visitNodeChildren(node);
 	}
+
+	// ---------------------------------------------------------------------------
+	// Resolução de identificadores e inferência de tipos
+	// ---------------------------------------------------------------------------
+
+	visitIdentifier(node: IdentifierNode): void {
+		// Resolver o símbolo no escopo atual
+		const symbol = this.currentScope.resolve(node.name);
+		if (symbol !== undefined) {
+			node.symbol = symbol;
+		}
+		this.visitNodeChildren(node);
+	}
+
+	visitIdentifierExpression(node: import('./ast').IdentifierExpressionNode): void {
+		// Resolver o símbolo do identificador
+		const symbol = this.currentScope.resolve(node.name.name);
+		if (symbol !== undefined) {
+			node.name.symbol = symbol;
+			node.type = symbol.type;
+		}
+		this.visitNodeChildren(node);
+	}
+
+	visitLiteralExpression(node: import('./ast').LiteralExpressionNode): void {
+		// Inferir tipo baseado no valor literal
+		// Simplificação: assume Integer para números, String para strings
+		if (typeof node.value === 'number') {
+			node.type = this.typeResolver.resolveType(undefined); // Integer por padrão
+		} else if (typeof node.value === 'string') {
+			node.type = this.typeResolver.resolveType(undefined); // String por padrão
+		} else if (typeof node.value === 'boolean') {
+			node.type = this.typeResolver.resolveType(undefined); // Boolean por padrão
+		}
+		this.visitNodeChildren(node);
+	}
+
+	visitBinaryExpression(node: import('./ast').BinaryExpressionNode): void {
+		this.visitNodeChildren(node);
+
+		// Inferir tipo baseado nos operandos
+		const leftType = node.left.type;
+		const rightType = node.right.type;
+
+		if (leftType !== undefined && rightType !== undefined) {
+			// Para operações aritméticas, usa o tipo comum
+			// Simplificação: usa o tipo do operando esquerdo
+			node.type = leftType;
+		}
+	}
+
+	visitUnaryExpression(node: import('./ast').UnaryExpressionNode): void {
+		this.visitNodeChildren(node);
+		node.type = node.operand.type;
+	}
+
+	visitMemberExpression(node: import('./ast').MemberExpressionNode): void {
+		this.visitNodeChildren(node);
+
+		// Resolver o tipo do objeto
+		const objectType = node.object.type;
+		if (objectType !== undefined) {
+			// Se o objeto é um tipo de classe/record/interface, buscar o campo/método
+			// Simplificação: assume que o membro existe no tipo
+			// Resolução completa será implementada em fase posterior
+		}
+	}
+
+	visitIndexExpression(node: import('./ast').IndexExpressionNode): void {
+		this.visitNodeChildren(node);
+
+		// O tipo de indexação é o tipo do elemento do array
+		const arrayType = node.object.type;
+		if (arrayType !== undefined) {
+			// Simplificação: precisa verificar se é ArrayType
+			// node.type = arrayType.elementType;
+		}
+	}
+
+	visitCallExpression(node: import('./ast').CallExpressionNode): void {
+		this.visitNodeChildren(node);
+
+		// O tipo da chamada é o tipo de retorno da função
+		const calleeType = node.callee.type;
+		if (calleeType !== undefined) {
+			// Simplificação: precisa verificar se é SubprogramType
+			// node.type = calleeType.returnType;
+		}
+	}
+
+	visitSelfExpression(_node: import('./ast').SelfExpressionNode): void {
+		// Self refere-se à instância da classe atual
+		if (this.currentClassScope !== undefined) {
+			// node.type = tipo da classe
+		}
+	}
+
+	visitInheritedExpression(_node: import('./ast').InheritedExpressionNode): void {
+		// Inherited refere-se à classe base
+		if (this.currentClassScope !== undefined) {
+			// node.type = tipo da classe base
+		}
+	}
+
+	visitCastExpression(node: import('./ast').CastExpressionNode): void {
+		this.visitNodeChildren(node);
+		// O tipo é o tipo alvo do cast
+		node.type = this.typeResolver.resolveType(node.castType);
+	}
+
+	visitDerefExpression(node: import('./ast').DerefExpressionNode): void {
+		this.visitNodeChildren(node);
+
+		const pointerType = node.expression.type;
+		if (pointerType !== undefined) {
+			// Simplificação: precisa verificar se é PointerType
+			// node.type = pointerType.pointedType;
+		}
+	}
+
+	visitParenExpression(node: import('./ast').ParenExpressionNode): void {
+		this.visitNodeChildren(node);
+		node.type = node.expression.type;
+	}
 }

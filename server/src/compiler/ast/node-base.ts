@@ -1,6 +1,7 @@
 import { SourceRange } from './source-range';
 import type { ASTVisitor } from './visitor';
 import type { Symbol } from '../symbols';
+import type { PascalType } from '../types';
 
 /** Nó base da AST. Mantém range, ligações pai/filho e dispatch de visitor. */
 export abstract class ASTNode {
@@ -60,6 +61,10 @@ export abstract class DeclarationNode extends ASTNode {
 
 export abstract class StatementNode extends ASTNode {}
 
-export abstract class ExpressionNode extends ASTNode {}
+/** Nó de expressão com tipo inferido pelo analisador semântico. */
+export abstract class ExpressionNode extends ASTNode {
+	/** Tipo semântico inferido para esta expressão. */
+	type: PascalType | undefined;
+}
 
 export abstract class TypeNode extends ASTNode {}

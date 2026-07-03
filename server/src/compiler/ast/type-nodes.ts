@@ -2,10 +2,13 @@ import { ASTNodeKind, ParameterDirection } from './kinds';
 import { ASTNode, DeclarationNode, TypeNode, type ExpressionNode } from './node-base';
 import type { SourceRange } from './source-range';
 import type { ASTVisitor } from './visitor';
+import type { Symbol } from '../symbols';
 
 export class IdentifierNode extends ASTNode {
 	readonly kind = ASTNodeKind.Identifier;
 	readonly name: string;
+	/** Símbolo resolvido para este identificador (apenas em usos, não em declarações). */
+	symbol: Symbol | undefined;
 
 	constructor(range: SourceRange, name: string) {
 		super(range);
