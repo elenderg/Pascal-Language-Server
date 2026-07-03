@@ -88,6 +88,60 @@ export class TypeSymbol extends Symbol {
 	}
 }
 
+export class ClassSymbol extends TypeSymbol {
+	readonly visibility: Visibility | undefined;
+	readonly isAbstract: boolean;
+	readonly isSealed: boolean;
+
+	constructor(
+		name: string,
+		range: Range,
+		uri: string,
+		type: PascalType,
+		visibility: Visibility | undefined,
+		isAbstract: boolean,
+		isSealed: boolean,
+		declaringNode?: ASTNode,
+	) {
+		super(name, range, uri, type, declaringNode);
+		this.visibility = visibility;
+		this.isAbstract = isAbstract;
+		this.isSealed = isSealed;
+	}
+}
+
+export class RecordSymbol extends TypeSymbol {
+	readonly visibility: Visibility | undefined;
+
+	constructor(
+		name: string,
+		range: Range,
+		uri: string,
+		type: PascalType,
+		visibility: Visibility | undefined,
+		declaringNode?: ASTNode,
+	) {
+		super(name, range, uri, type, declaringNode);
+		this.visibility = visibility;
+	}
+}
+
+export class InterfaceSymbol extends TypeSymbol {
+	readonly visibility: Visibility | undefined;
+
+	constructor(
+		name: string,
+		range: Range,
+		uri: string,
+		type: PascalType,
+		visibility: Visibility | undefined,
+		declaringNode?: ASTNode,
+	) {
+		super(name, range, uri, type, declaringNode);
+		this.visibility = visibility;
+	}
+}
+
 export class GenericParameterSymbol extends TypeSymbol {
 	readonly constraint: PascalType | undefined;
 

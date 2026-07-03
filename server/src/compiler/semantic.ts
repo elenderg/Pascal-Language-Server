@@ -47,6 +47,9 @@ import {
 	VariableSymbol,
 	ConstantSymbol,
 	TypeSymbol,
+	ClassSymbol,
+	RecordSymbol,
+	InterfaceSymbol,
 	SubprogramSymbol,
 	ParameterSymbol,
 	FieldSymbol,
@@ -224,11 +227,15 @@ export class SemanticVisitor extends RecursiveASTVisitor implements ASTVisitorVo
 		this.currentClassScope = classScope;
 
 		const classType = new ClassType(undefined, [], undefined);
-		const classSymbol = new TypeSymbol(
+
+		const classSymbol = new ClassSymbol(
 			node.name.name,
 			this.toLSPRange(node.name.range),
 			this.uri,
 			classType,
+			node.visibility,
+			false, // isAbstract - será detectado posteriormente via modifiers
+			false, // isSealed - será detectado posteriormente via modifiers
 			node,
 		);
 		classType.declaringSymbol = classSymbol;
@@ -248,11 +255,12 @@ export class SemanticVisitor extends RecursiveASTVisitor implements ASTVisitorVo
 		this.enterScope(recordScope);
 
 		const recordType = new RecordType(undefined);
-		const recordSymbol = new TypeSymbol(
+		const recordSymbol = new RecordSymbol(
 			node.name?.name ?? 'anonymous',
 			node.name ? this.toLSPRange(node.name.range) : this.toLSPRange(node.range),
 			this.uri,
 			recordType,
+			node.visibility,
 			node,
 		);
 		recordType.declaringSymbol = recordSymbol;
@@ -271,11 +279,12 @@ export class SemanticVisitor extends RecursiveASTVisitor implements ASTVisitorVo
 		this.enterScope(interfaceScope);
 
 		const interfaceType = new InterfaceType(undefined, [], undefined);
-		const interfaceSymbol = new TypeSymbol(
+		const interfaceSymbol = new InterfaceSymbol(
 			node.name.name,
 			this.toLSPRange(node.name.range),
 			this.uri,
 			interfaceType,
+			node.visibility,
 			node,
 		);
 		interfaceType.declaringSymbol = interfaceSymbol;
