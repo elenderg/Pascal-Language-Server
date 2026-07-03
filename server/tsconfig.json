@@ -4,8 +4,8 @@
 		"lib": [
 			"ES2024"
 		],
-		"module": "commonjs",
-		"moduleResolution": "node",
+		"module": "Node16",
+		"moduleResolution": "node16",
 		"sourceMap": true,
 		"strict": true,
 		"outDir": "out",
