@@ -66,14 +66,14 @@ function findNodeAtPosition(document: PascalDocument, position: Position): impor
 		}
 
 		visitNode(node: import('./compiler/ast').ASTNode): void {
-			if (this.result !== undefined) {
-				return; // Já encontrado
+			if (!this.isPositionInRange(node.range)) {
+				return;
 			}
 
-			if (this.isPositionInRange(node.range)) {
+			// Continuar buscando filhos para encontrar o nó mais específico.
+			this.visitNodeChildren(node);
+			if (this.result === undefined) {
 				this.result = node;
-				// Continuar buscando filhos para encontrar o nó mais específico
-				this.visitNodeChildren(node);
 			}
 		}
 	}
@@ -96,7 +96,7 @@ export function goToDefinition(document: PascalDocument, position: Position): Lo
 		const target = node.symbol.declaringNode;
 		if (target !== undefined) {
 			return {
-				uri: document.uri,
+				uri: node.symbol.uri,
 				range: toLSPRange(target.range),
 			};
 		}
@@ -104,7 +104,7 @@ export function goToDefinition(document: PascalDocument, position: Position): Lo
 
 	if (node instanceof DeclarationNode && node.symbol !== undefined) {
 		return {
-			uri: document.uri,
+			uri: node.symbol.uri,
 			range: node.symbol.range,
 		};
 	}
@@ -154,7 +154,7 @@ export function goToImplementation(document: PascalDocument, position: Position)
 
 	const implementations: Location[] = [];
 	if (symbol.declaringNode !== undefined) {
-		implementations.push({ uri: document.uri, range: toLSPRange(symbol.declaringNode.range) });
+		implementations.push({ uri: symbol.uri, range: toLSPRange(symbol.declaringNode.range) });
 	}
 	return implementations;
 }
@@ -214,7 +214,7 @@ export function findReferences(document: PascalDocument, position: Position, inc
 	// Incluir declaração se solicitado
 	if (includeDeclaration && targetSymbol.declaringNode !== undefined) {
 		references.push({
-			uri: document.uri,
+			uri: targetSymbol.uri,
 			range: toLSPRange(targetSymbol.declaringNode.range),
 		});
 	}
