@@ -32,7 +32,7 @@ import {
 	EnumTypeDeclarationNode,
 	PropertyDeclarationNode,
 	ASTNode,
-} from './compiler/ast';
+} from './compiler/ast/index';
 import type { Scope } from './compiler/scopes';
 import { Symbol, SymbolKind } from './compiler/symbols';
 import { AliasType, ArrayType, ClassType, EnumType, InterfaceType, PointerType, PrimitiveType, RecordType, SubprogramType, UnresolvedType, VoidType } from './compiler/types';
