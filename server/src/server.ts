@@ -41,15 +41,6 @@ import {
 import { PascalDocument, PascalWorkspace, DocumentKind, AnalysisPhase } from './compiler/models';
 import { parsePascalDocument } from './compiler/parser';
 
-process.on("uncaughtException", err => {
-    console.error(err);
-});
-
-process.on("unhandledRejection", err => {
-    console.error(err);
-});
-
-
 // Create a connection for the server, using Node's IPC as a transport.
 // Also include all preview / proposed LSP features.
 const connection = createConnection(ProposedFeatures.all);
@@ -64,16 +55,24 @@ function getPascalDocument(textDocument: TextDocument): PascalDocument {
 }
 
 function ensureSemanticAnalysis(document: PascalDocument): PascalDocument {
+	//console.log("1");
 	if (document.ast === undefined) {
+		//console.log("2");
 		const ast = parsePascalDocument(TextDocument.create(document.uri, 'pascal', document.version, document.text));
+		//console.log("3");
 		document.setParsed(ast, ast.kind === 'Unit' ? DocumentKind.Unit : DocumentKind.Program);
+		//console.log("4");
 	}
+	//console.log("5");
 	if (document.analysisPhase !== AnalysisPhase.Scoped && document.analysisPhase !== AnalysisPhase.Typed && document.analysisPhase !== AnalysisPhase.Complete) {
+		//console.log("6");
 		document.analyzeSemantic();
+		//console.log("7");
 	}
 	if (document.rootScope !== undefined && document.unitSymbol !== undefined) {
 		workspace.registerUnit(document);
 	}
+	//console.log("8");
 	return document;
 }
 
@@ -452,12 +451,26 @@ connection.onCompletionResolve((item: CompletionItem): CompletionItem => {
 });
 
 // Document Symbol Handler
-connection.onDocumentSymbol((params): DocumentSymbol[] => {
+connection.onDocumentSymbol((params): DocumentSymbol[] => {	
 	const document = documents.get(params.textDocument.uri);
 	if (document) {
+		console.log("onDocumentSymbol called for: " + params.textDocument.uri);
 		const pascalDoc = ensureSemanticAnalysis(getPascalDocument(document));
+		if (pascalDoc.ast === undefined) {
+			console.log("AST is undefined for: " + params.textDocument.uri);
+		} else {
+			console.log("AST is defined for: " + params.textDocument.uri);
+		}
+		
 		return getDocumentSymbols(pascalDoc);
 	}
+	process.on("uncaughtException", err => {
+    console.error(err);
+	});
+
+	process.on("unhandledRejection", err => {
+			console.error(err);
+	});
 	return [];
 });
 

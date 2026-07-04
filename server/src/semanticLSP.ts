@@ -1,5 +1,5 @@
 import {
-	TextDocument,
+	//TextDocument,
 	CompletionItem,
 	CompletionItemKind,
 	DocumentSymbol,
@@ -12,7 +12,7 @@ import {
 	TextEdit,
 } from 'vscode-languageserver/node';
 import type { PascalDocument } from './compiler/models';
-import type { PascalWorkspace } from './compiler/models';
+//import type { PascalWorkspace } from './compiler/models';
 import {
 	IdentifierNode,
 	DeclarationNode,
@@ -386,6 +386,7 @@ export function rename(document: PascalDocument, position: Position, newName: st
  */
 export function getDocumentSymbols(document: PascalDocument): DocumentSymbol[] {
 	if (document.ast === undefined) {
+		console.log("AST is undefined for document: " + document.uri);
 		return [];
 	}
 
@@ -569,6 +570,10 @@ export function getDocumentSymbols(document: PascalDocument): DocumentSymbol[] {
 
 	const builder = new SymbolBuilder();
 	document.ast.accept(builder);
+
+	if (symbols.length === 0) {
+		console.log("No symbols found in document: " + document.uri);
+	}
 
 	return symbols;
 }
