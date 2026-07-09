@@ -398,6 +398,12 @@ class PascalParser {
 	private parseProcedureDeclaration(): ProcedureDeclarationNode {
 		const start = this.advance().start;
 		const name = this.expectIdentifier('procedure name');
+		// Handle qualified names like TContador.Incrementar
+		if (this.checkSymbol('.')) {
+			this.advance();
+			// Skip the class name and use the actual method name
+			const actualName = this.expectIdentifier('actual method name');
+		}
 		const parameters = this.parseParameterList();
 		let body: BlockNode | undefined;
 		if (this.checkSymbol(';')) {
@@ -434,6 +440,12 @@ class PascalParser {
 		const start = this.advance().start;
 		const kind = this.previousToken().text === 'constructor' ? SubprogramKind.Constructor : SubprogramKind.Destructor;
 		const name = this.expectIdentifier('method name');
+		// Handle qualified names like TContador.Create
+		if (this.checkSymbol('.')) {
+			this.advance();
+			// Skip the class name and use the actual method name
+			const actualName = this.expectIdentifier('actual method name');
+		}
 		const parameters = this.parseParameterList();
 		let returnType: TypeNode | undefined;
 		let body: BlockNode | undefined;
