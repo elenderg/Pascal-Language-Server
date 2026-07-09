@@ -508,13 +508,18 @@ class PascalParser {
 		const declarations: Array<VariableDeclarationNode | ConstantDeclarationNode | TypeAliasDeclarationNode | ProcedureDeclarationNode | FunctionDeclarationNode | MethodDeclarationNode | ClassDeclarationNode | RecordDeclarationNode | InterfaceDeclarationNode | PropertyDeclarationNode> = [];
 		const statements: Array<EmptyStatementNode | AssignStatementNode | CallStatementNode | IfStatementNode | WhileStatementNode | RepeatStatementNode | ForStatementNode | CaseStatementNode | WithStatementNode | TryStatementNode | GotoStatementNode | ReturnStatementNode | RaiseStatementNode> = [];
 		
+		console.log("parseBlockBody: starting at line " + start.line);
+		
 		// Parse declarations before begin
 		while (!this.isAtEnd()) {
+			console.log("parseBlockBody: current token at line " + this.currentToken().start.line + " type: " + this.currentToken().type + " text: " + this.currentToken().text);
 			if (this.checkKeyword('begin')) {
+				console.log("parseBlockBody: found main begin at line " + this.currentToken().start.line);
 				break;
 			}
 			// Only stop at end. (end keyword followed by period), not decimal points
 			if (this.checkKeyword('end') && this.checkSymbol('.')) {
+				console.log("parseBlockBody: found end. at line " + this.currentToken().start.line);
 				break;
 			}
 			if (this.checkSymbol(';')) {
@@ -523,9 +528,11 @@ class PascalParser {
 			}
 			const decl = this.parseDeclaration();
 			if (decl !== undefined) {
+				console.log("parseBlockBody: parsed declaration " + decl.constructor.name + " ending at line " + decl.range.end.line);
 				declarations.push(decl as never);
 				continue;
 			}
+			console.log("parseBlockBody: skipping unknown token at line " + this.currentToken().start.line);
 			this.advance();
 		}
 		
@@ -566,6 +573,7 @@ class PascalParser {
 		}
 		
 		const end = this.previousToken().end;
+		console.log("parseBlockBody: ending at line " + end.line);
 		return new BlockNode(this.rangeFromPositions(start, end), labels, declarations, statements);
 	}
 

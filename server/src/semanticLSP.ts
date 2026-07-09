@@ -68,14 +68,20 @@ function findNodeAtPosition(document: PascalDocument, position: Position): impor
 			console.log("Node is undefined");
 			return undefined;
 		}
+		if(node?.constructor.name === "ProgramNode"){
+			console.log("Found ProgramNode - range: " + node.range.start.line + ":" + node.range.start.character + " to " + node.range.end.line + ":" + node.range.end.character);
+			console.log("Target position: " + targetLine + ":" + targetChar);
+		}
 		
 		if (!isPositionInRange(node.range)) {
+			console.log("Position not in range for node: " + node?.constructor.name + " - range: " + node.range.start.line + ":" + node.range.start.character + " to " + node.range.end.line + ":" + node.range.end.character);
 			return undefined;
 		}
 
 		for (const child of node.children) {
 			const matchedChild = visitNode(child);
 			if (matchedChild !== undefined) {
+				console.log("Found matching child node: " + matchedChild.constructor.name);
 				return matchedChild;
 			}
 		}
