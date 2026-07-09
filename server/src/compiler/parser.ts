@@ -432,8 +432,13 @@ class PascalParser {
 			const actualName = this.expectIdentifier('actual method name');
 		}
 		const parameters = this.parseParameterList();
-		let returnType: TypeNode = this.parseTypeNode();
+		let returnType: TypeNode | undefined;
 		let body: BlockNode | undefined;
+		// Consume colon and return type
+		if (this.checkSymbol(':')) {
+			this.advance();
+			returnType = this.parseTypeNode();
+		}
 		if (this.checkSymbol(';')) {
 			this.advance();
 			if (this.checkKeyword('forward')) {
@@ -446,6 +451,10 @@ class PascalParser {
 		// Check for begin after semicolon (for standalone function implementations)
 		if (body === undefined && this.checkKeyword('begin')) {
 			body = this.parseMethodBody();
+		}
+		// Provide a default return type if not specified
+		if (returnType === undefined) {
+			returnType = new IdentifierNode(this.rangeFromPositions(start, start), 'void');
 		}
 		return new FunctionDeclarationNode(this.rangeFromPositions(start, this.previousToken().end), name, [], parameters, returnType, [], undefined, body, false);
 	}
@@ -520,18 +529,13 @@ class PascalParser {
 		const declarations: Array<VariableDeclarationNode | ConstantDeclarationNode | TypeAliasDeclarationNode | ProcedureDeclarationNode | FunctionDeclarationNode | MethodDeclarationNode | ClassDeclarationNode | RecordDeclarationNode | InterfaceDeclarationNode | PropertyDeclarationNode> = [];
 		const statements: Array<EmptyStatementNode | AssignStatementNode | CallStatementNode | IfStatementNode | WhileStatementNode | RepeatStatementNode | ForStatementNode | CaseStatementNode | WithStatementNode | TryStatementNode | GotoStatementNode | ReturnStatementNode | RaiseStatementNode> = [];
 		
-		console.log("parseBlockBody: starting at line " + start.line);
-		
 		// Parse declarations before begin
 		while (!this.isAtEnd()) {
-			console.log("parseBlockBody: current token at line " + this.currentToken().start.line + " type: " + this.currentToken().type + " text: " + this.currentToken().text);
 			if (this.checkKeyword('begin')) {
-				console.log("parseBlockBody: found main begin at line " + this.currentToken().start.line);
 				break;
 			}
 			// Only stop at end. (end keyword followed by period), not decimal points
 			if (this.checkKeyword('end') && this.checkSymbol('.')) {
-				console.log("parseBlockBody: found end. at line " + this.currentToken().start.line);
 				break;
 			}
 			if (this.checkSymbol(';')) {
@@ -540,11 +544,17 @@ class PascalParser {
 			}
 			const decl = this.parseDeclaration();
 			if (decl !== undefined) {
-				console.log("parseBlockBody: parsed declaration " + decl.constructor.name + " ending at line " + decl.range.end.line);
 				declarations.push(decl as never);
+				// Skip semicolon after declaration
+				if (this.checkSymbol(';')) {
+					this.advance();
+				}
+				// Check for function/procedure/method body after declaration
+				if (this.checkKeyword('begin')) {
+					this.parseMethodBody();
+				}
 				continue;
 			}
-			console.log("parseBlockBody: skipping unknown token at line " + this.currentToken().start.line);
 			this.advance();
 		}
 		
@@ -585,7 +595,6 @@ class PascalParser {
 		}
 		
 		const end = this.previousToken().end;
-		console.log("parseBlockBody: ending at line " + end.line);
 		return new BlockNode(this.rangeFromPositions(start, end), labels, declarations, statements);
 	}
 
