@@ -127,7 +127,8 @@ class PascalParser {
 		const name = this.expectIdentifier('program name');
 		this.expectSymbol(';');
 		const block = this.parseBlockBody();
-		const end = block.range.end;
+		// Use the end of the document instead of just the block
+		const end = this.tokens[this.tokens.length - 1]?.end ?? block.range.end;
 		return new ProgramNode(this.rangeFromPositions(start, end), name, block);
 	}
 
@@ -137,7 +138,8 @@ class PascalParser {
 		this.expectSymbol(';');
 		const interfaceSection = this.parseUnitSection('interface');
 		const implementationSection = this.parseUnitSection('implementation');
-		const end = implementationSection.range.end;
+		// Use the end of the document instead of just the implementation section
+		const end = this.tokens[this.tokens.length - 1]?.end ?? implementationSection.range.end;
 		return new UnitNode(this.rangeFromPositions(start, end), name, interfaceSection, implementationSection, undefined, undefined);
 	}
 
@@ -208,6 +210,18 @@ class PascalParser {
 		if (this.checkKeyword('type')) {
 			return this.parseTypeDeclaration();
 		}
+		if (this.checkKeyword('uses')) {
+			// Skip uses clause in main program
+			this.advance();
+			while (!this.isAtEnd()) {
+				if (this.checkSymbol(';')) {
+					this.advance();
+					break;
+				}
+				this.advance();
+			}
+			return undefined; // Don't add to declarations
+		}
 		if (this.checkKeyword('procedure')) {
 			return this.parseProcedureDeclaration();
 		}
@@ -215,6 +229,7 @@ class PascalParser {
 			return this.parseFunctionDeclaration();
 		}
 		if (this.checkKeyword('constructor') || this.checkKeyword('destructor')) {
+			// Handle standalone constructor/destructor (method implementations outside class)
 			return this.parseMethodDeclaration();
 		}
 		if (this.checkKeyword('label')) {
@@ -474,20 +489,60 @@ class PascalParser {
 		const labels: LabelDeclarationNode[] = [];
 		const declarations: Array<VariableDeclarationNode | ConstantDeclarationNode | TypeAliasDeclarationNode | ProcedureDeclarationNode | FunctionDeclarationNode | MethodDeclarationNode | ClassDeclarationNode | RecordDeclarationNode | InterfaceDeclarationNode | PropertyDeclarationNode> = [];
 		const statements: Array<EmptyStatementNode | AssignStatementNode | CallStatementNode | IfStatementNode | WhileStatementNode | RepeatStatementNode | ForStatementNode | CaseStatementNode | WithStatementNode | TryStatementNode | GotoStatementNode | ReturnStatementNode | RaiseStatementNode> = [];
+		
+		console.log("parseBlockBody: starting at line " + start.line);
+		
+		// Parse declarations before begin
+		while (!this.isAtEnd()) {
+			console.log("parseBlockBody: current token at line " + this.currentToken().start.line + " type: " + this.currentToken().type + " text: " + this.currentToken().text);
+			if (this.checkKeyword('begin')) {
+				console.log("parseBlockBody: found main begin at line " + this.currentToken().start.line);
+				break;
+			}
+			// Only stop at end. (end keyword followed by period), not decimal points
+			if (this.checkKeyword('end') && this.checkSymbol('.')) {
+				console.log("parseBlockBody: found end. at line " + this.currentToken().start.line);
+				break;
+			}
+			if (this.checkSymbol(';')) {
+				this.advance();
+				continue;
+			}
+			const decl = this.parseDeclaration();
+			if (decl !== undefined) {
+				console.log("parseBlockBody: parsed declaration " + decl.constructor.name + " ending at line " + decl.range.end.line);
+				declarations.push(decl as never);
+				continue;
+			}
+			console.log("parseBlockBody: skipping unknown token at line " + this.currentToken().start.line);
+			this.advance();
+		}
+		
+		// Parse begin...end block with statements
 		if (this.checkKeyword('begin')) {
 			this.advance();
+			let beginDepth = 1; // Track nested begin...end blocks
 			while (!this.isAtEnd()) {
-				if (this.checkKeyword('end')) {
-					this.advance();
-					break;
-				}
-				if (this.checkSymbol(';')) {
+				if (this.checkKeyword('begin')) {
+					beginDepth++;
 					this.advance();
 					continue;
 				}
-				const decl = this.parseDeclaration();
-				if (decl !== undefined) {
-					declarations.push(decl as never);
+				if (this.checkKeyword('end')) {
+					beginDepth--;
+					if (beginDepth === 0) {
+						this.advance();
+						// Check if this is end. (end of program)
+						if (this.checkSymbol('.')) {
+							this.advance();
+						}
+						break;
+					}
+					this.advance();
+					continue;
+				}
+				if (this.checkSymbol(';')) {
+					this.advance();
 					continue;
 				}
 				const stmt = this.parseStatement();
@@ -498,7 +553,10 @@ class PascalParser {
 				this.advance();
 			}
 		}
-		return new BlockNode(this.rangeFromPositions(start, this.previousToken().end), labels, declarations, statements);
+		
+		const end = this.previousToken().end;
+		console.log("parseBlockBody: ending at line " + end.line);
+		return new BlockNode(this.rangeFromPositions(start, end), labels, declarations, statements);
 	}
 
 	private parseStatement(): EmptyStatementNode | AssignStatementNode | CallStatementNode | IfStatementNode | WhileStatementNode | RepeatStatementNode | ForStatementNode | CaseStatementNode | WithStatementNode | TryStatementNode | GotoStatementNode | ReturnStatementNode | RaiseStatementNode | undefined {
@@ -610,7 +668,7 @@ class PascalParser {
 			return this.createIdentifier(context, this.currentPosition());
 		}
 		const token = this.advance();
-		return this.createIdentifier(token.text, token.start);
+		return this.createIdentifier(token.text, token.start, token.end);
 	}
 
 	private expectKeyword(keyword: string): Token {
@@ -678,12 +736,12 @@ class PascalParser {
 		return this.currentToken().type === 'eof';
 	}
 
-	private createIdentifier(name: string, start: SourcePosition): IdentifierNode {
-		return new IdentifierNode(this.rangeFromPositions(start, start), name);
+	private createIdentifier(name: string, start: SourcePosition, end?: SourcePosition): IdentifierNode {
+		return new IdentifierNode(this.rangeFromPositions(start, end ?? start), name);
 	}
 
 	private currentPosition(): SourcePosition {
-		return new SourcePosition(this.text.split(/\r?\n/).length - 1, this.text.length);
+		return this.currentToken().start;
 	}
 
 	private rangeFromTokens(start: Token, end: Token): SourceRange {

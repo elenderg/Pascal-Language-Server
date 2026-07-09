@@ -45,42 +45,55 @@ import { AliasType, ArrayType, ClassType, EnumType, InterfaceType, PointerType, 
  * Encontra o nó AST na posição especificada.
  */
 function findNodeAtPosition(document: PascalDocument, position: Position): import('./compiler/ast').ASTNode | undefined {
+	if(document === undefined){
+		console.log("Document is undefined");
+		return undefined;
+	}
 	if (document.ast === undefined) {
+		console.log("AST is undefined for document: " + document.uri);
 		return undefined;
 	}
 
 	const targetLine = position.line;
 	const targetChar = position.character;
 
-	class NodeFinder extends RecursiveASTVisitor implements ASTVisitorVoid {
-		result: import('./compiler/ast').ASTNode | undefined = undefined;
+	const isPositionInRange = (range: import('./compiler/ast').SourceRange): boolean => {		
+		return targetLine >= range.start.line && targetLine <= range.end.line &&
+			(targetLine !== range.start.line || targetChar >= range.start.character) &&
+			(targetLine !== range.end.line || targetChar <= range.end.character);
+	};
 
-		private isPositionInRange(range: import('./compiler/ast').SourceRange): boolean {
-			return targetLine >= range.start.line && targetLine <= range.end.line &&
-				(targetLine !== range.start.line || targetChar >= range.start.character) &&
-				(targetLine !== range.end.line || targetChar <= range.end.character);
+	const visitNode = (node: import('./compiler/ast').ASTNode | undefined): import('./compiler/ast').ASTNode | undefined => {
+		if(node === undefined){
+			console.log("Node is undefined");
+			return undefined;
+		}
+		if(node?.constructor.name === "ProgramNode"){
+			console.log("Found ProgramNode - range: " + node.range.start.line + ":" + node.range.start.character + " to " + node.range.end.line + ":" + node.range.end.character);
+			console.log("Target position: " + targetLine + ":" + targetChar);
+		}
+		
+		if (!isPositionInRange(node.range)) {
+			console.log("Position not in range for node: " + node?.constructor.name + " - range: " + node.range.start.line + ":" + node.range.start.character + " to " + node.range.end.line + ":" + node.range.end.character);
+			return undefined;
 		}
 
-		defaultResult(): void {
-			// No-op
-		}
-
-		visitNode(node: import('./compiler/ast').ASTNode): void {
-			if (!this.isPositionInRange(node.range)) {
-				return;
+		for (const child of node.children) {
+			const matchedChild = visitNode(child);
+			if (matchedChild !== undefined) {
+				console.log("Found matching child node: " + matchedChild.constructor.name);
+				return matchedChild;
 			}
-
-			// Continuar buscando filhos para encontrar o nó mais específico.
-			this.visitNodeChildren(node);
-			if (this.result === undefined) {
-				this.result = node;
-			}
 		}
+		return node;
+	};
+
+	const result = visitNode(document.ast);
+	if (result === undefined) {
+		console.log("No matching node found at position: " + position.line + ":" + position.character);
 	}
 
-	const finder = new NodeFinder();
-	document.ast.accept(finder);
-	return finder.result;
+	return result;
 }
 
 /**
@@ -89,6 +102,7 @@ function findNodeAtPosition(document: PascalDocument, position: Position): impor
 export function goToDefinition(document: PascalDocument, position: Position): Location | null {
 	const node = findNodeAtPosition(document, position);
 	if (node === undefined) {
+		console.log("No node found at position: " + position.line + ":" + position.character);
 		return null;
 	}
 
@@ -97,8 +111,11 @@ export function goToDefinition(document: PascalDocument, position: Position): Lo
 		if (target !== undefined) {
 			return {
 				uri: node.symbol.uri,
-				range: toLSPRange(target.range),
+				range: node.symbol.range,
 			};
+		}
+		if (target === undefined) {
+			console.log("No declaration found for symbol: " + node.symbol.name);
 		}
 	}
 
@@ -109,12 +126,14 @@ export function goToDefinition(document: PascalDocument, position: Position): Lo
 		};
 	}
 
+	console.log("No definition found for node: " + node.constructor.name);
 	return null;
 }
 
 export function goToTypeDefinition(document: PascalDocument, position: Position): Location | null {
 	const node = findNodeAtPosition(document, position);
 	if (node === undefined) {
+		console.log("No node found at position: " + position.line + ":" + position.character);
 		return null;
 	}
 
@@ -126,6 +145,7 @@ export function goToTypeDefinition(document: PascalDocument, position: Position)
 	}
 
 	if (typeNode === undefined || typeNode.declaringSymbol === undefined) {
+		console.log("No type definition found for node: " + node.constructor.name);
 		return null;
 	}
 
@@ -138,6 +158,7 @@ export function goToTypeDefinition(document: PascalDocument, position: Position)
 export function goToImplementation(document: PascalDocument, position: Position): Location[] | null {
 	const node = findNodeAtPosition(document, position);
 	if (node === undefined) {
+		console.log("No node found at position: " + position.line + ":" + position.character);
 		return null;
 	}
 
@@ -149,6 +170,7 @@ export function goToImplementation(document: PascalDocument, position: Position)
 	}
 
 	if (symbol === undefined || symbol.kind !== SymbolKind.Subprogram) {
+		console.log("Symbol is not a subprogram: " + symbol?.name);
 		return null;
 	}
 
@@ -165,6 +187,7 @@ export function goToImplementation(document: PascalDocument, position: Position)
 export function findReferences(document: PascalDocument, position: Position, includeDeclaration: boolean): Location[] {
 	const node = findNodeAtPosition(document, position);
 	if (node === undefined) {
+		console.log("No node found at position: " + position.line + ":" + position.character);
 		return [];
 	}
 
@@ -178,6 +201,7 @@ export function findReferences(document: PascalDocument, position: Position, inc
 	}
 
 	if (targetSymbol === undefined) {
+		console.log("No symbol found for node: " + node.constructor.name);
 		return [];
 	}
 
@@ -228,6 +252,7 @@ export function findReferences(document: PascalDocument, position: Position, inc
 export function hover(document: PascalDocument, position: Position): Hover | null {
 	const node = findNodeAtPosition(document, position);
 	if (node === undefined) {
+		//console.log("No node found at position: " + position.line + ":" + position.character);
 		return null;
 	}
 
@@ -240,6 +265,7 @@ export function hover(document: PascalDocument, position: Position): Hover | nul
 	}
 
 	if (symbol === undefined) {
+		console.log("No symbol found for node: " + node.constructor.name);
 		return null;
 	}
 
@@ -282,11 +308,13 @@ export function hover(document: PascalDocument, position: Position): Hover | nul
  */
 export function getCompletion(document: PascalDocument, position: Position): CompletionItem[] {
 	if (document.rootScope === undefined) {
+		console.log("Root scope is undefined for document: " + document.uri);
 		return [];
 	}
 
 	const scope = findScopeAtPosition(document, position);
 	if (scope === undefined) {
+		console.log("No scope found at position: " + position.line + ":" + position.character);
 		return [];
 	}
 
@@ -321,6 +349,7 @@ export function getCompletion(document: PascalDocument, position: Position): Com
 export function rename(document: PascalDocument, position: Position, newName: string): WorkspaceEdit | null {
 	const node = findNodeAtPosition(document, position);
 	if (node === undefined) {
+		console.log("No node found at position: " + position.line + ":" + position.character);
 		return null;
 	}
 
@@ -333,6 +362,7 @@ export function rename(document: PascalDocument, position: Position, newName: st
 	}
 
 	if (targetSymbol === undefined) {
+		console.log("No symbol found for node: " + node.constructor.name);
 		return null;
 	}
 
@@ -574,7 +604,6 @@ export function getDocumentSymbols(document: PascalDocument): DocumentSymbol[] {
 	if (symbols.length === 0) {
 		console.log("No symbols found in document: " + document.uri);
 	}
-
 	return symbols;
 }
 
@@ -588,6 +617,7 @@ function toLSPRange(range: import('./compiler/ast').SourceRange): Range {
 
 function describeType(type: import('./compiler/types').PascalType | undefined): string {
 	if (type === undefined) {
+		console.log("Type is undefined");
 		return 'unknown';
 	}
 	if (type instanceof PrimitiveType) {

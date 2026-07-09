@@ -51,28 +51,23 @@ const documents = new TextDocuments(TextDocument);
 const workspace = new PascalWorkspace();
 
 function getPascalDocument(textDocument: TextDocument): PascalDocument {
-	return workspace.openDocument(textDocument.uri, textDocument.getText(), textDocument.version);
+	//console.log("Getting Pascal document for URI: " + textDocument.uri);
+	return workspace.getDocument(textDocument.uri)
+		?? workspace.openDocument(textDocument.uri, textDocument.getText(), textDocument.version);
 }
 
 function ensureSemanticAnalysis(document: PascalDocument): PascalDocument {
-	//console.log("1");
 	if (document.ast === undefined) {
-		//console.log("2");
+		console.log("Parsing document for URI: " + document.uri);
 		const ast = parsePascalDocument(TextDocument.create(document.uri, 'pascal', document.version, document.text));
-		//console.log("3");
 		document.setParsed(ast, ast.kind === 'Unit' ? DocumentKind.Unit : DocumentKind.Program);
-		//console.log("4");
 	}
-	//console.log("5");
-	if (document.analysisPhase !== AnalysisPhase.Scoped && document.analysisPhase !== AnalysisPhase.Typed && document.analysisPhase !== AnalysisPhase.Complete) {
-		//console.log("6");
+	if (document.analysisPhase === AnalysisPhase.None || document.analysisPhase === AnalysisPhase.Parsed) {
 		document.analyzeSemantic();
-		//console.log("7");
 	}
 	if (document.rootScope !== undefined && document.unitSymbol !== undefined) {
 		workspace.registerUnit(document);
 	}
-	//console.log("8");
 	return document;
 }
 
@@ -459,7 +454,7 @@ connection.onDocumentSymbol((params): DocumentSymbol[] => {
 		if (pascalDoc.ast === undefined) {
 			console.log("AST is undefined for: " + params.textDocument.uri);
 		} else {
-			console.log("AST is defined for: " + params.textDocument.uri);
+			console.log("AST is defined for: " + params.textDocument.uri);		
 		}
 		
 		return getDocumentSymbols(pascalDoc);
