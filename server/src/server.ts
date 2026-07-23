@@ -39,7 +39,7 @@ import {
 	goToImplementation,
 } from './semanticLSP';
 import { PascalDocument, PascalWorkspace, DocumentKind, AnalysisPhase } from './compiler/models';
-import { parsePascalDocument } from './compiler/parser';
+import { parsePascalDocument } from './compiler/oldparser';
 
 // Create a connection for the server, using Node's IPC as a transport.
 // Also include all preview / proposed LSP features.

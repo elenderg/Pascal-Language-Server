@@ -92,7 +92,8 @@ function findNodeAtPosition(document: PascalDocument, position: Position): impor
 	if (result === undefined) {
 		console.log("No matching node found at position: " + position.line + ":" + position.character);
 	}
-
+	//if(result){	return result;}
+	console.log("chegou aqui");
 	return result;
 }
 
