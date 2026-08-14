@@ -92,8 +92,6 @@ function findNodeAtPosition(document: PascalDocument, position: Position): impor
 	if (result === undefined) {
 		console.log("No matching node found at position: " + position.line + ":" + position.character);
 	}
-	//if(result){	return result;}
-	console.log("chegou aqui");
 	return result;
 }
 
@@ -108,16 +106,10 @@ export function goToDefinition(document: PascalDocument, position: Position): Lo
 	}
 
 	if (node instanceof IdentifierNode && node.symbol !== undefined) {
-		const target = node.symbol.declaringNode;
-		if (target !== undefined) {
-			return {
-				uri: node.symbol.uri,
-				range: node.symbol.range,
-			};
-		}
-		if (target === undefined) {
-			console.log("No declaration found for symbol: " + node.symbol.name);
-		}
+		return {
+			uri: node.symbol.uri,
+			range: node.symbol.range,
+		};
 	}
 
 	if (node instanceof DeclarationNode && node.symbol !== undefined) {

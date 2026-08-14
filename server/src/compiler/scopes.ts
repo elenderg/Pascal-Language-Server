@@ -51,15 +51,16 @@ export abstract class BaseScope implements Scope {
 
 	define(symbol: Symbol): void {
 		symbol.declaringScope = this;
+		const nameLower = symbol.name.toLowerCase();
 
 		if (symbol instanceof SubprogramSymbolClass) {
 			const sub = symbol;
-			if (sub.isOverload || this.overloadGroups.has(sub.name)) {
-				let group = this.overloadGroups.get(sub.name);
+			if (sub.isOverload || this.overloadGroups.has(nameLower)) {
+				let group = this.overloadGroups.get(nameLower);
 				if (!group) {
 					group = new OverloadGroup(sub.name);
-					this.overloadGroups.set(sub.name, group);
-					const existing = this.symbols.get(sub.name);
+					this.overloadGroups.set(nameLower, group);
+					const existing = this.symbols.get(nameLower);
 					if (existing instanceof SubprogramSymbolClass) {
 						group.add(existing);
 					}
@@ -68,11 +69,11 @@ export abstract class BaseScope implements Scope {
 			}
 		}
 
-		this.symbols.set(symbol.name, symbol);
+		this.symbols.set(nameLower, symbol);
 	}
 
 	resolveLocal(name: string): Symbol | undefined {
-		return this.symbols.get(name);
+		return this.symbols.get(name.toLowerCase());
 	}
 
 	resolve(name: string): Symbol | undefined {
@@ -88,11 +89,12 @@ export abstract class BaseScope implements Scope {
 	}
 
 	getSubprograms(name: string): readonly SubprogramSymbol[] {
-		const group = this.overloadGroups.get(name);
+		const nameLower = name.toLowerCase();
+		const group = this.overloadGroups.get(nameLower);
 		if (group) {
 			return group.members;
 		}
-		const sym = this.symbols.get(name);
+		const sym = this.symbols.get(nameLower);
 		if (sym instanceof SubprogramSymbolClass) {
 			return [sym];
 		}

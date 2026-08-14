@@ -363,6 +363,7 @@ export class SemanticVisitor extends RecursiveASTVisitor implements ASTVisitorVo
 				node,
 			);
 
+			name.symbol = symbol;
 			this.currentScope.define(symbol);
 		}
 

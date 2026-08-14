@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { Position } from 'vscode-languageserver/node';
 import { TextDocument } from 'vscode-languageserver-textdocument';
 import { DocumentKind, PascalDocument } from '../compiler/models';
-import { parsePascalDocument } from '../compiler/oldparser';
+import { parsePascalDocument } from '../compiler/old_parser';
 import { goToDefinition } from '../semanticLSP';
 
 test('goToDefinition resolves a declaration from the parsed AST', () => {

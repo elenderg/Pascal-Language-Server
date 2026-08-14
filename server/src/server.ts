@@ -22,7 +22,7 @@ import {
 	TextDocument
 } from 'vscode-languageserver-textdocument';
 
-import * as child_process from 'child_process';
+import * as childProcess from 'child_process';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
@@ -39,7 +39,7 @@ import {
 	goToImplementation,
 } from './semanticLSP';
 import { PascalDocument, PascalWorkspace, DocumentKind, AnalysisPhase } from './compiler/models';
-import { parsePascalDocument } from './compiler/oldparser';
+import { parsePascalDocument } from './compiler/old_parser';
 
 // Create a connection for the server, using Node's IPC as a transport.
 // Also include all preview / proposed LSP features.
@@ -174,7 +174,7 @@ function getDocumentSettings(resource: string): Thenable<PascalSettings> {
 }
 
 const filesWithDiagnostics = new Set<string>();
-const activeProcesses = new Map<string, child_process.ChildProcess>();
+const activeProcesses = new Map<string, childProcess.ChildProcess>();
 const validationTimers = new Map<string, NodeJS.Timeout>();
 
 // Only keep settings for open documents
@@ -277,20 +277,20 @@ async function validateTextDocument(textDocument: TextDocument): Promise<void> {
 			targetFilePath
 		];
 
-		const child = child_process.execFile(compilerPath, args, { cwd });
+		const child = childProcess.execFile(compilerPath, args, { cwd });
 		activeProcesses.set(uri, child);
 
 		let stdout = '';
 		let stderr = '';
 
 		if (child.stdout) {
-			child.stdout.on('data', data => {
-				stdout += data;
+			child.stdout.on('data', (data: Buffer | string) => {
+				stdout += data.toString();
 			});
 		}
 		if (child.stderr) {
-			child.stderr.on('data', data => {
-				stderr += data;
+			child.stderr.on('data', (data: Buffer | string) => {
+				stderr += data.toString();
 			});
 		}
 

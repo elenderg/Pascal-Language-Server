@@ -155,189 +155,193 @@ export abstract class RecursiveASTVisitor implements ASTVisitorVoid {
 	protected abstract defaultResult(): void;
 
 	visitProgram(node: ProgramNode): void {
-		this.visitNodeChildren(node);
+		this.visitNode(node);
 	}
 	visitUnit(node: UnitNode): void {
-		this.visitNodeChildren(node);
+		this.visitNode(node);
 	}
 	visitUnitSection(node: UnitSectionNode): void {
-		this.visitNodeChildren(node);
+		this.visitNode(node);
 	}
 	visitUsesClause(node: UsesClauseNode): void {
-		this.visitNodeChildren(node);
+		this.visitNode(node);
 	}
 	visitTypeSection(node: TypeSectionNode): void {
-		this.visitNodeChildren(node);
+		this.visitNode(node);
 	}
 	visitConstSection(node: ConstSectionNode): void {
-		this.visitNodeChildren(node);
+		this.visitNode(node);
 	}
 	visitVarSection(node: VarSectionNode): void {
-		this.visitNodeChildren(node);
+		this.visitNode(node);
 	}
 	visitBlock(node: BlockNode): void {
-		this.visitNodeChildren(node);
+		this.visitNode(node);
 	}
 	visitProcedureDeclaration(node: ProcedureDeclarationNode): void {
-		this.visitNodeChildren(node);
+		this.visitNode(node);
 	}
 	visitFunctionDeclaration(node: FunctionDeclarationNode): void {
-		this.visitNodeChildren(node);
+		this.visitNode(node);
 	}
 	visitMethodDeclaration(node: MethodDeclarationNode): void {
-		this.visitNodeChildren(node);
+		this.visitNode(node);
 	}
 	visitClassDeclaration(node: ClassDeclarationNode): void {
-		this.visitNodeChildren(node);
+		this.visitNode(node);
 	}
 	visitRecordDeclaration(node: RecordDeclarationNode): void {
-		this.visitNodeChildren(node);
+		this.visitNode(node);
 	}
 	visitInterfaceDeclaration(node: InterfaceDeclarationNode): void {
-		this.visitNodeChildren(node);
+		this.visitNode(node);
 	}
 	visitVariableDeclaration(node: VariableDeclarationNode): void {
-		this.visitNodeChildren(node);
+		this.visitNode(node);
 	}
 	visitParameterDeclaration(node: ParameterDeclarationNode): void {
-		this.visitNodeChildren(node);
+		this.visitNode(node);
 	}
 	visitConstantDeclaration(node: ConstantDeclarationNode): void {
-		this.visitNodeChildren(node);
+		this.visitNode(node);
 	}
 	visitTypeAliasDeclaration(node: TypeAliasDeclarationNode): void {
-		this.visitNodeChildren(node);
+		this.visitNode(node);
 	}
 	visitEnumTypeDeclaration(node: EnumTypeDeclarationNode): void {
-		this.visitNodeChildren(node);
+		this.visitNode(node);
 	}
 	visitPropertyDeclaration(node: PropertyDeclarationNode): void {
-		this.visitNodeChildren(node);
+		this.visitNode(node);
 	}
 	visitLabelDeclaration(node: LabelDeclarationNode): void {
-		this.visitNodeChildren(node);
+		this.visitNode(node);
 	}
-	visitIdentifier(_node: IdentifierNode): void {
-		this.defaultResult();
+	visitIdentifier(node: IdentifierNode): void {
+		this.visitNode(node);
 	}
 	visitNamedType(node: NamedTypeNode): void {
-		this.visitNodeChildren(node);
+		this.visitNode(node);
 	}
 	visitGenericInstType(node: GenericInstTypeNode): void {
-		this.visitNodeChildren(node);
+		this.visitNode(node);
 	}
 	visitClassType(node: ClassTypeNode): void {
-		this.visitNodeChildren(node);
+		this.visitNode(node);
 	}
 	visitRecordType(node: RecordTypeNode): void {
-		this.visitNodeChildren(node);
+		this.visitNode(node);
 	}
 	visitInterfaceType(node: InterfaceTypeNode): void {
-		this.visitNodeChildren(node);
+		this.visitNode(node);
 	}
 	visitArrayType(node: ArrayTypeNode): void {
-		this.visitNodeChildren(node);
+		this.visitNode(node);
 	}
 	visitPointerType(node: PointerTypeNode): void {
-		this.visitNodeChildren(node);
+		this.visitNode(node);
 	}
 	visitSubprogramType(node: SubprogramTypeNode): void {
-		this.visitNodeChildren(node);
+		this.visitNode(node);
 	}
 	visitFormalParameterType(node: FormalParameterTypeNode): void {
-		this.visitNodeChildren(node);
+		this.visitNode(node);
 	}
 	visitEnumType(node: EnumTypeNode): void {
-		this.visitNodeChildren(node);
+		this.visitNode(node);
 	}
 	visitSetType(node: SetTypeNode): void {
-		this.visitNodeChildren(node);
+		this.visitNode(node);
 	}
 	visitStringType(node: StringTypeNode): void {
-		this.visitNodeChildren(node);
+		this.visitNode(node);
 	}
 	visitRecordVariant(node: RecordVariantNode): void {
-		this.visitNodeChildren(node);
+		this.visitNode(node);
 	}
 	visitRecordVariantCase(node: RecordVariantCaseNode): void {
-		this.visitNodeChildren(node);
+		this.visitNode(node);
 	}
 	visitAssignStatement(node: AssignStatementNode): void {
-		this.visitNodeChildren(node);
+		this.visitNode(node);
 	}
 	visitCallStatement(node: CallStatementNode): void {
-		this.visitNodeChildren(node);
+		this.visitNode(node);
 	}
 	visitIfStatement(node: IfStatementNode): void {
-		this.visitNodeChildren(node);
+		this.visitNode(node);
 	}
 	visitWhileStatement(node: WhileStatementNode): void {
-		this.visitNodeChildren(node);
+		this.visitNode(node);
 	}
 	visitRepeatStatement(node: RepeatStatementNode): void {
-		this.visitNodeChildren(node);
+		this.visitNode(node);
 	}
 	visitForStatement(node: ForStatementNode): void {
-		this.visitNodeChildren(node);
+		this.visitNode(node);
 	}
 	visitCaseStatement(node: CaseStatementNode): void {
-		this.visitNodeChildren(node);
+		this.visitNode(node);
 	}
 	visitCaseBranch(node: CaseBranchNode): void {
-		this.visitNodeChildren(node);
+		this.visitNode(node);
 	}
 	visitWithStatement(node: WithStatementNode): void {
-		this.visitNodeChildren(node);
+		this.visitNode(node);
 	}
 	visitTryStatement(node: TryStatementNode): void {
-		this.visitNodeChildren(node);
+		this.visitNode(node);
 	}
 	visitGotoStatement(node: GotoStatementNode): void {
-		this.visitNodeChildren(node);
+		this.visitNode(node);
 	}
 	visitReturnStatement(node: ReturnStatementNode): void {
-		this.visitNodeChildren(node);
+		this.visitNode(node);
 	}
 	visitRaiseStatement(node: RaiseStatementNode): void {
-		this.visitNodeChildren(node);
+		this.visitNode(node);
 	}
-	visitEmptyStatement(_node: EmptyStatementNode): void {
-		this.defaultResult();
+	visitEmptyStatement(node: EmptyStatementNode): void {
+		this.visitNode(node);
 	}
 	visitIdentifierExpression(node: IdentifierExpressionNode): void {
-		this.visitNodeChildren(node);
+		this.visitNode(node);
 	}
-	visitLiteralExpression(_node: LiteralExpressionNode): void {
-		this.defaultResult();
+	visitLiteralExpression(node: LiteralExpressionNode): void {
+		this.visitNode(node);
 	}
 	visitBinaryExpression(node: BinaryExpressionNode): void {
-		this.visitNodeChildren(node);
+		this.visitNode(node);
 	}
 	visitUnaryExpression(node: UnaryExpressionNode): void {
-		this.visitNodeChildren(node);
+		this.visitNode(node);
 	}
 	visitMemberExpression(node: MemberExpressionNode): void {
-		this.visitNodeChildren(node);
+		this.visitNode(node);
 	}
 	visitIndexExpression(node: IndexExpressionNode): void {
-		this.visitNodeChildren(node);
+		this.visitNode(node);
 	}
 	visitCallExpression(node: CallExpressionNode): void {
-		this.visitNodeChildren(node);
+		this.visitNode(node);
 	}
 	visitInheritedExpression(node: InheritedExpressionNode): void {
-		this.visitNodeChildren(node);
+		this.visitNode(node);
 	}
-	visitSelfExpression(_node: SelfExpressionNode): void {
-		this.defaultResult();
+	visitSelfExpression(node: SelfExpressionNode): void {
+		this.visitNode(node);
 	}
 	visitCastExpression(node: CastExpressionNode): void {
-		this.visitNodeChildren(node);
+		this.visitNode(node);
 	}
 	visitDerefExpression(node: DerefExpressionNode): void {
-		this.visitNodeChildren(node);
+		this.visitNode(node);
 	}
 	visitParenExpression(node: ParenExpressionNode): void {
+		this.visitNode(node);
+	}
+
+	protected visitNode(node: ASTNode): void {
 		this.visitNodeChildren(node);
 	}
 

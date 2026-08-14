@@ -44,7 +44,7 @@ import {
 	RepeatStatementNode,
 	ForStatementNode,
 	CaseStatementNode,
-//	CaseBranchNode,
+	CaseBranchNode,
 	WithStatementNode,
 	TryStatementNode,
 	GotoStatementNode,
@@ -52,19 +52,20 @@ import {
 	RaiseStatementNode,
 	EmptyStatementNode,
 } from './ast/statements';
+import { StatementNode } from './ast/node-base';
 import {
 	IdentifierExpressionNode,
 	LiteralExpressionNode,
-//	BinaryExpressionNode,
-//	UnaryExpressionNode,
-//	MemberExpressionNode,
-//	IndexExpressionNode,
+	BinaryExpressionNode,
+	UnaryExpressionNode,
+	MemberExpressionNode,
+	IndexExpressionNode,
 	CallExpressionNode,
-//	InheritedExpressionNode,
-//	SelfExpressionNode,
-//	CastExpressionNode,
-//	DerefExpressionNode,
-//	ParenExpressionNode,
+	InheritedExpressionNode,
+	SelfExpressionNode,
+	CastExpressionNode,
+	DerefExpressionNode,
+	ParenExpressionNode,
 } from './ast/expressions';
 import { ParameterDirection, SubprogramKind,
 	// SubprogramModifier, Visibility 
@@ -79,7 +80,7 @@ interface Token {
 }
 
 const KEYWORDS = new Set([
-	'and','array','asm','begin','case','class','const','constructor','destructor','div','do','downto','else','end','except','exit','finalization','finally','for','forward','function','goto','if','implementation','in','inherited','initialization','interface','is','label','library','mod','nil','not','object','of','or','out','packed','procedure','program','property','raise','record','repeat','set','self','shl','shr','string','then','to','try','type','unit','until','uses','var','virtual','while','with','xor','true','false','var','const','type','public','private','protected','published','override','overload','abstract','static','dynamic','inline','message'
+	'and','array','asm','begin','case','class','const','constructor','destructor','div','do','downto','else','end','except','exit','finalization','finally','for','forward','function','goto','if','implementation','in','inherited','initialization','interface','is','label','library','mod','nil','not','object','of','or','out','packed','procedure','program','property','raise','record','repeat','set','self','shl','shr','string','then','to','try','type','unit','until','uses','var','virtual','while','with','xor','true','false','var','const','type','public','private','protected','published','strictprivate','strictprotected','override','overload','abstract','static','dynamic','inline','message'
 ]);
 
 export function parsePascalDocument(document: TextDocument): ProgramNode | UnitNode {
@@ -203,6 +204,10 @@ class PascalParser {
 
 	private parseDeclaration(): ProcedureDeclarationNode | FunctionDeclarationNode | MethodDeclarationNode | VariableDeclarationNode | ConstantDeclarationNode | TypeAliasDeclarationNode | ClassDeclarationNode | RecordDeclarationNode | InterfaceDeclarationNode | EnumTypeDeclarationNode | PropertyDeclarationNode | LabelDeclarationNode | undefined {
 		this.skipTrivia();
+		if (this.checkKeyword('private') || this.checkKeyword('public') || this.checkKeyword('protected') || this.checkKeyword('published') || this.checkKeyword('strictprivate') || this.checkKeyword('strictprotected')) {
+			this.advance();
+			return this.parseDeclaration();
+		}
 		if (this.checkKeyword('var')) {
 			return this.parseVarSectionDeclaration();
 		}
@@ -213,7 +218,6 @@ class PascalParser {
 			return this.parseTypeDeclaration();
 		}
 		if (this.checkKeyword('uses')) {
-			// Skip uses clause in main program
 			this.advance();
 			while (!this.isAtEnd()) {
 				if (this.checkSymbol(';')) {
@@ -222,7 +226,7 @@ class PascalParser {
 				}
 				this.advance();
 			}
-			return undefined; // Don't add to declarations
+			return undefined;
 		}
 		if (this.checkKeyword('procedure')) {
 			return this.parseProcedureDeclaration();
@@ -231,7 +235,6 @@ class PascalParser {
 			return this.parseFunctionDeclaration();
 		}
 		if (this.checkKeyword('constructor') || this.checkKeyword('destructor')) {
-			// Handle standalone constructor/destructor (method implementations outside class)
 			return this.parseMethodDeclaration();
 		}
 		if (this.checkKeyword('label')) {
@@ -317,12 +320,16 @@ class PascalParser {
 	private parseClassDeclaration(name: IdentifierNode): ClassDeclarationNode {
 		const start = name.range.start;
 		this.advance();
-		const members: (VariableDeclarationNode | ProcedureDeclarationNode | FunctionDeclarationNode | PropertyDeclarationNode)[] = [];
+		const members: (VariableDeclarationNode | ProcedureDeclarationNode | FunctionDeclarationNode | MethodDeclarationNode | PropertyDeclarationNode)[] = [];
 		while (!this.isAtEnd()) {
 			if (this.checkKeyword('end')) {
 				this.advance();
 				this.expectSymbol(';');
 				break;
+			}
+			if (this.checkKeyword('private') || this.checkKeyword('public') || this.checkKeyword('protected') || this.checkKeyword('published') || this.checkKeyword('strictprivate') || this.checkKeyword('strictprotected')) {
+				this.advance();
+				continue;
 			}
 			const member = this.parseDeclaration();
 			if (member !== undefined) {
@@ -397,19 +404,37 @@ class PascalParser {
 		return new EnumTypeDeclarationNode(this.rangeFromPositions(start, this.previousToken().end), name, elements, undefined);
 	}
 
-	private parseProcedureDeclaration(): ProcedureDeclarationNode {
-		const start = this.advance().start;
-		const name = this.expectIdentifier('procedure name');
-		// Handle qualified names like TContador.Incrementar
+private parseQualifiedName(): IdentifierNode {
+		const first = this.expectIdentifier('name');
 		if (this.checkSymbol('.')) {
 			this.advance();
-			// Skip the class name and use the actual method name
-		//	const actualName = this.expectIdentifier('actual method name');
+			const second = this.expectIdentifier('name');
+			return this.createIdentifier(second.name, first.range.start, second.range.end);
 		}
+		return first;
+	}
+
+	private skipSubprogramModifiers(): void {
+		while (!this.isAtEnd()) {
+			if (this.checkSymbol(';') || this.checkKeyword('forward')) {
+				break;
+			}
+			if (this.checkKeyword('override') || this.checkKeyword('virtual') || this.checkKeyword('overload') || this.checkKeyword('abstract') || this.checkKeyword('reintroduce') || this.checkKeyword('static') || this.checkKeyword('inline') || this.checkKeyword('dynamic') || this.checkKeyword('message')) {
+				this.advance();
+				continue;
+			}
+			break;
+		}
+	}
+
+	private parseProcedureDeclaration(): ProcedureDeclarationNode {
+		const start = this.advance().start;
+		const name = this.parseQualifiedName();
 		const parameters = this.parseParameterList();
 		let body: BlockNode | undefined;
 		if (this.checkSymbol(';')) {
 			this.advance();
+			this.skipSubprogramModifiers();
 			if (this.checkKeyword('forward')) {
 				this.advance();
 				this.expectSymbol(';');
@@ -417,7 +442,6 @@ class PascalParser {
 				body = this.parseMethodBody();
 			}
 		}
-		// Check for begin after semicolon (for standalone procedure implementations)
 		if (body === undefined && this.checkKeyword('begin')) {
 			body = this.parseMethodBody();
 		}
@@ -426,23 +450,17 @@ class PascalParser {
 
 	private parseFunctionDeclaration(): FunctionDeclarationNode {
 		const start = this.advance().start;
-		const name = this.expectIdentifier('function name');
-		// Handle qualified names like TContador.Valor
-		if (this.checkSymbol('.')) {
-			this.advance();
-			// Skip the class name and use the actual method name
-			//const actualName = this.expectIdentifier('actual method name');
-		}
+		const name = this.parseQualifiedName();
 		const parameters = this.parseParameterList();
 		let returnType: TypeNode | undefined;
 		let body: BlockNode | undefined;
-		// Consume colon and return type
 		if (this.checkSymbol(':')) {
 			this.advance();
 			returnType = this.parseTypeNode();
 		}
 		if (this.checkSymbol(';')) {
 			this.advance();
+			this.skipSubprogramModifiers();
 			if (this.checkKeyword('forward')) {
 				this.advance();
 				this.expectSymbol(';');
@@ -450,11 +468,9 @@ class PascalParser {
 				body = this.parseMethodBody();
 			}
 		}
-		// Check for begin after semicolon (for standalone function implementations)
 		if (body === undefined && this.checkKeyword('begin')) {
 			body = this.parseMethodBody();
 		}
-		// Provide a default return type if not specified
 		if (returnType === undefined) {
 			returnType = new IdentifierNode(this.rangeFromPositions(start, start), 'void');
 		}
@@ -464,18 +480,13 @@ class PascalParser {
 	private parseMethodDeclaration(): MethodDeclarationNode {
 		const start = this.advance().start;
 		const kind = this.previousToken().text === 'constructor' ? SubprogramKind.Constructor : SubprogramKind.Destructor;
-		const name = this.expectIdentifier('method name');
-		// Handle qualified names like TContador.Create
-		if (this.checkSymbol('.')) {
-			this.advance();
-			// Skip the class name and use the actual method name
-			//const actualName = this.expectIdentifier('actual method name');
-		}
+		const name = this.parseQualifiedName();
 		const parameters = this.parseParameterList();
 		let returnType: TypeNode | undefined;
 		let body: BlockNode | undefined;
 		if (this.checkSymbol(';')) {
 			this.advance();
+			this.skipSubprogramModifiers();
 			if (this.checkKeyword('forward')) {
 				this.advance();
 				this.expectSymbol(';');
@@ -483,7 +494,6 @@ class PascalParser {
 				body = this.parseMethodBody();
 			}
 		}
-		// Check for begin after semicolon (for standalone method implementations)
 		if (body === undefined && this.checkKeyword('begin')) {
 			body = this.parseMethodBody();
 		}
@@ -551,10 +561,6 @@ class PascalParser {
 				if (this.checkSymbol(';')) {
 					this.advance();
 				}
-				// Check for function/procedure/method body after declaration
-				if (this.checkKeyword('begin')) {
-					this.parseMethodBody();
-				}
 				continue;
 			}
 			this.advance();
@@ -606,8 +612,6 @@ class PascalParser {
 		const declarations: (VariableDeclarationNode | ConstantDeclarationNode | TypeAliasDeclarationNode | ProcedureDeclarationNode | FunctionDeclarationNode | MethodDeclarationNode | ClassDeclarationNode | RecordDeclarationNode | InterfaceDeclarationNode | PropertyDeclarationNode)[] = [];
 		const statements: (EmptyStatementNode | AssignStatementNode | CallStatementNode | IfStatementNode | WhileStatementNode | RepeatStatementNode | ForStatementNode | CaseStatementNode | WithStatementNode | TryStatementNode | GotoStatementNode | ReturnStatementNode | RaiseStatementNode)[] = [];
 		
-		console.log("parseMethodBody: starting at line " + start.line);
-		
 		// Parse declarations before begin
 		while (!this.isAtEnd()) {
 			if (this.checkKeyword('begin')) {
@@ -658,19 +662,167 @@ class PascalParser {
 		}
 		
 		const end = this.previousToken().end;
-		console.log("parseMethodBody: ending at line " + end.line);
 		return new BlockNode(this.rangeFromPositions(start, end), labels, declarations, statements);
 	}
 
 	private parseStatement(): EmptyStatementNode | AssignStatementNode | CallStatementNode | IfStatementNode | WhileStatementNode | RepeatStatementNode | ForStatementNode | CaseStatementNode | WithStatementNode | TryStatementNode | GotoStatementNode | ReturnStatementNode | RaiseStatementNode | undefined {
 		if (this.checkKeyword('begin')) {
-			return new EmptyStatementNode(this.rangeFromPositions(this.currentToken().start, this.currentToken().end));
+			return this.parseCompoundStatement();
 		}
 		if (this.checkKeyword('if')) {
-			return new EmptyStatementNode(this.rangeFromPositions(this.currentToken().start, this.currentToken().end));
+			const start = this.advance().start;
+			const condition = this.parseExpression();
+			this.expectKeyword('then');
+			const thenBranch = this.parseStatement();
+			let elseBranch: EmptyStatementNode | undefined;
+			if (this.checkKeyword('else')) {
+				this.advance();
+				elseBranch = this.parseStatement() as EmptyStatementNode;
+			}
+			return new IfStatementNode(this.rangeFromPositions(start, this.previousToken().end), condition, thenBranch ?? new EmptyStatementNode(this.rangeFromPositions(start, start)), elseBranch);
 		}
 		if (this.checkKeyword('while')) {
-			return new EmptyStatementNode(this.rangeFromPositions(this.currentToken().start, this.currentToken().end));
+			const start = this.advance().start;
+			const condition = this.parseExpression();
+			this.expectKeyword('do');
+			const body = this.parseStatement();
+			return new WhileStatementNode(this.rangeFromPositions(start, this.previousToken().end), condition, body ?? new EmptyStatementNode(this.rangeFromPositions(start, start)));
+		}
+		if (this.checkKeyword('repeat')) {
+			const start = this.advance().start;
+			const body: StatementNode[] = [];
+			while (!this.isAtEnd()) {
+				if (this.checkKeyword('until')) {
+					this.advance();
+					break;
+				}
+				const stmt = this.parseStatement();
+				if (stmt !== undefined) {
+					body.push(stmt as never);
+				}
+			}
+			const condition = this.parseExpression();
+			return new RepeatStatementNode(this.rangeFromPositions(start, this.previousToken().end), body, condition);
+		}
+		if (this.checkKeyword('for')) {
+			const start = this.advance().start;
+			const variable = this.expectIdentifier('for variable');
+			this.expectSymbol(':=');
+			const initial = this.parseExpression();
+			const direction = this.checkKeyword('downto') ? 'downto' : 'to';
+			if (this.checkKeyword('to') || this.checkKeyword('downto')) {
+				this.advance();
+			}
+			const final = this.parseExpression();
+			this.expectKeyword('do');
+			const body = this.parseStatement();
+			return new ForStatementNode(this.rangeFromPositions(start, this.previousToken().end), variable, initial, direction, final, body ?? new EmptyStatementNode(this.rangeFromPositions(start, start)));
+		}
+		if (this.checkKeyword('case')) {
+			const start = this.advance().start;
+			const selector = this.parseExpression();
+			this.expectKeyword('of');
+			const cases: CaseBranchNode[] = [];
+			while (!this.isAtEnd()) {
+				if (this.checkKeyword('end')) {
+					this.advance();
+					break;
+				}
+				if (this.checkKeyword('else')) {
+					this.advance();
+					break;
+				}
+				const labels: ExpressionNode[] = [];
+				while (!this.isAtEnd()) {
+					if (this.checkSymbol(':')) {
+						this.advance();
+						break;
+					}
+					labels.push(this.parseExpression());
+					if (this.checkSymbol(',')) {
+						this.advance();
+						continue;
+					}
+					if (this.checkSymbol('.')) {
+						this.advance();
+						this.advance();
+						labels.push(this.parseExpression());
+					}
+					break;
+				}
+				const statements: StatementNode[] = [];
+				while (!this.isAtEnd() && !this.checkKeyword('end') && !this.checkKeyword('else')) {
+					const stmt = this.parseStatement();
+					if (stmt !== undefined) {
+						statements.push(stmt as StatementNode);
+					}
+					if (this.checkSymbol(';')) {
+						this.advance();
+					}
+					if (this.checkSymbol(')')) {
+						break;
+					}
+				}
+				cases.push(new CaseBranchNode(this.rangeFromPositions(start, this.previousToken().end), labels, statements));
+			}
+			return new CaseStatementNode(this.rangeFromPositions(start, this.previousToken().end), selector, cases);
+		}
+		if (this.checkKeyword('with')) {
+			const start = this.advance().start;
+			const variables: ExpressionNode[] = [];
+			while (!this.isAtEnd()) {
+				variables.push(this.parseExpression());
+				if (!this.checkSymbol(',')) {
+					break;
+				}
+				this.advance();
+			}
+			this.expectKeyword('do');
+			const body = this.parseStatement();
+			return new WithStatementNode(this.rangeFromPositions(start, this.previousToken().end), variables, body ?? new EmptyStatementNode(this.rangeFromPositions(start, start)));
+		}
+		if (this.checkKeyword('try')) {
+			const start = this.advance().start;
+			const body: StatementNode[] = [];
+			while (!this.isAtEnd()) {
+				if (this.checkKeyword('except') || this.checkKeyword('finally') || this.checkKeyword('end')) {
+					break;
+				}
+				const stmt = this.parseStatement();
+				if (stmt !== undefined) {
+					body.push(stmt as StatementNode);
+				}
+			}
+			let exceptHandler: StatementNode[] | undefined = undefined;
+			let finallyHandler: StatementNode[] | undefined = undefined;
+			if (this.checkKeyword('except')) {
+				this.advance();
+				const handler: StatementNode[] = [];
+				while (!this.isAtEnd() && !this.checkKeyword('end')) {
+					const stmt = this.parseStatement();
+					if (stmt !== undefined) {
+						handler.push(stmt as StatementNode);
+					}
+				}
+				exceptHandler = handler;
+			}
+			if (this.checkKeyword('finally')) {
+				this.advance();
+				const handler: StatementNode[] = [];
+				while (!this.isAtEnd() && !this.checkKeyword('end')) {
+					const stmt = this.parseStatement();
+					if (stmt !== undefined) {
+						handler.push(stmt as StatementNode);
+					}
+				}
+				finallyHandler = handler;
+			}
+			return new TryStatementNode(this.rangeFromPositions(start, this.previousToken().end), body, exceptHandler, finallyHandler);
+		}
+		if (this.checkKeyword('raise')) {
+			const start = this.advance().start;
+			const exception = this.parseExpression();
+			return new RaiseStatementNode(this.rangeFromPositions(start, this.previousToken().end), exception);
 		}
 		if (this.checkKeyword('return')) {
 			this.advance();
@@ -687,12 +839,40 @@ class PascalParser {
 			}
 			if (this.checkSymbol(':=')) {
 				this.advance();
-				this.parseExpression();
+				const value = this.parseExpression();
 				this.expectSymbol(';');
-				return new AssignStatementNode(this.rangeFromPositions(id.range.start, this.previousToken().end), new IdentifierExpressionNode(id.range, id), new LiteralExpressionNode(id.range, 0));
+				return new AssignStatementNode(this.rangeFromPositions(id.range.start, this.previousToken().end), new IdentifierExpressionNode(id.range, id), value);
+			}
+			if (this.checkSymbol('.')) {
+				const methodName = this.expectIdentifier('method name');
+				if (this.checkSymbol('(')) {
+					this.advance();
+					this.skipTo(';');
+					return new CallStatementNode(this.rangeFromPositions(id.range.start, this.previousToken().end), new CallExpressionNode(this.rangeFromPositions(id.range.start, this.previousToken().end), new IdentifierExpressionNode(methodName.range, methodName), [], []));
+				}
 			}
 		}
 		return undefined;
+	}
+
+	private parseCompoundStatement(): EmptyStatementNode {
+		const start = this.advance().start;
+		while (!this.isAtEnd()) {
+			if (this.checkKeyword('end')) {
+				this.advance();
+				break;
+			}
+			if (this.checkSymbol(';')) {
+				this.advance();
+				continue;
+			}
+			const stmt = this.parseStatement();
+			if (stmt !== undefined) {
+				continue;
+			}
+			this.advance();
+		}
+		return new EmptyStatementNode(this.rangeFromPositions(start, this.previousToken().end));
 	}
 
 	private parseExpression(): ExpressionNode {
@@ -712,7 +892,37 @@ class PascalParser {
 				this.skipTo(')');
 				return new CallExpressionNode(this.rangeFromPositions(id.range.start, this.previousToken().end), new IdentifierExpressionNode(id.range, id), [], []);
 			}
+			if (this.checkSymbol('.')) {
+				this.advance();
+				const member = this.expectIdentifier('member');
+				return new MemberExpressionNode(this.rangeFromPositions(id.range.start, member.range.end), new IdentifierExpressionNode(id.range, id), member);
+			}
+			if (this.checkSymbol('[')) {
+				this.advance();
+				const index = this.parseExpression();
+				this.expectSymbol(']');
+				return new IndexExpressionNode(this.rangeFromPositions(id.range.start, this.previousToken().end), new IdentifierExpressionNode(id.range, id), [index]);
+			}
 			return new IdentifierExpressionNode(id.range, id);
+		}
+		if (this.checkSymbol('[')) {
+			this.advance();
+			const elements: ExpressionNode[] = [];
+			while (!this.isAtEnd() && !this.checkSymbol(']')) {
+				const expr = this.parseExpression();
+				elements.push(expr);
+				if (this.checkSymbol(',')) {
+					this.advance();
+				}
+			}
+			this.expectSymbol(']');
+			return new LiteralExpressionNode(this.rangeFromTokens(this.previousToken(), this.previousToken()), 0);
+		}
+		if (this.checkSymbol('(')) {
+			this.advance();
+			const expr = this.parseExpression();
+			this.expectSymbol(')');
+			return expr;
 		}
 		return new LiteralExpressionNode(this.rangeFromTokens(this.currentToken(), this.currentToken()), 0);
 	}
