@@ -177,6 +177,45 @@
     "type-declaration": {
       "patterns": [
         {
+          "name": "meta.array.index.pascal",
+          "begin": "(?i)\\b(array)\\s*(\\[)",
+          "beginCaptures": {
+            "1": { "name": "storage.type.modifier.pascal" },
+            "2": { "name": "punctuation.section.group.pascal" }
+          },
+          "end": "\\]",
+          "endCaptures": {
+            "0": { "name": "punctuation.section.group.pascal" }
+          },
+          "patterns": [
+            { "include": "#comments" },
+            { "include": "#numbers" },
+            { "include": "#built-in-types" },
+            {
+              "name": "entity.name.type.constant.other.reference.pascal",
+              "match": "\\b[A-Za-z_][A-Za-z0-9_]*\\b(?=\\s*\\.\\.)"
+            },
+            {
+              "match": "(?<=\\.\\.)\\s*([A-Za-z_][A-Za-z0-9_]*)\\b",
+              "captures": {
+                "1": { "name": "entity.name.type.constant.other.reference.pascal" }
+              }
+            },
+            {
+              "name": "entity.name.type.pascal",
+              "match": "\\b[A-Za-z_][A-Za-z0-9_]*\\b"
+            },
+            { "include": "#operators" },
+            { "include": "#punctuation" }
+          ]
+        },
+        {
+          "match": "(?<=\\.\\.)\\s*([A-Za-z_][A-Za-z0-9_]*)\\b",
+          "captures": {
+            "1": { "name": "entity.name.type.constant.other.reference.pascal" }
+          }
+        },
+        {
           "match": "(?i)([A-Za-z_][A-Za-z0-9_]*)\\s*(=)\\s*(\\^)\\s*(?:(Boolean|ByteBool|WordBool|LongBool|Byte|ShortInt|SmallInt|Integer|LongInt|LongWord|Cardinal|Int64|QWord|NativeInt|NativeUInt|Word|Real|Single|Double|Extended|Comp|Currency|Char|AnsiChar|WideChar|UnicodeChar|String|ShortString|AnsiString|WideString|UnicodeString|PChar|PAnsiChar|PWideChar|Pointer|Variant|TObject|TClass|TComponent|Text|File)\\b|([A-Za-z_][A-Za-z0-9_]*(?:\\.[A-Za-z_][A-Za-z0-9_]*)*)\\b)",
           "captures": {
             "1": { "name": "entity.name.type.pascal" },
