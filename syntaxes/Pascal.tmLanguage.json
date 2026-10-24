@@ -143,7 +143,7 @@
           "match": "(?i)\\b(program|unit|library|package)\\s+([A-Za-z_][A-Za-z0-9_]*)",
           "captures": {
             "1": { "name": "keyword.other.program.pascal" },
-            "2": { "name": "entity.name.section.pascal" }
+            "2": { "name": "entity.name.type.section.pascal" }
           }
         },
         {
