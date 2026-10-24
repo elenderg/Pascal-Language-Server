@@ -2,14 +2,14 @@
   "name": "pascal-lsp",
   "displayName": "Pascal Language Server",
   "description": "Pascal Language Server powered by Free Pascal Compiler (FPC)",
-  "author": "Antigravity",
+  "author": "Elender Góis Gallas",
   "license": "MIT",
   "version": "1.0.0",
   "repository": {
     "type": "git",
     "url": "https://github.com/elenderg/Pascal-Language-Server"
   },
-  "publisher": "antigravity",
+  "publisher": "Elender Góis Gallas",
   "categories": [
     "Programming Languages"
   ],
