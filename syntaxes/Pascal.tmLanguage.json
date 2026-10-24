@@ -264,6 +264,12 @@
     "member-declarations": {
       "patterns": [
         {
+          "match": "(?i)(?<=:)\\s*(\\^?\\s*)((?!(?:Boolean|ByteBool|WordBool|LongBool|Byte|ShortInt|SmallInt|Integer|LongInt|LongWord|Cardinal|Int64|QWord|NativeInt|NativeUInt|Word|Real|Single|Double|Extended|Comp|Currency|Char|AnsiChar|WideChar|UnicodeChar|String|ShortString|AnsiString|WideString|UnicodeString|PChar|PAnsiChar|PWideChar|Pointer|Variant|TObject|TClass|TComponent|Text|File)\\b)[A-Za-z_][A-Za-z0-9_]*(?:\\.[A-Za-z_][A-Za-z0-9_]*)*)\\b",
+          "captures": {
+          	"2": { "name": "entity.name.type.pascal" }
+          }
+        },
+        {
           "match": "([A-Za-z_][A-Za-z0-9_]*(?:\\s*,\\s*[A-Za-z_][A-Za-z0-9_]*)*)\\s*(:)",
           "captures": {
             "1": { "name": "variable.other.property.pascal" },
