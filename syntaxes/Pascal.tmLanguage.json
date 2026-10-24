@@ -436,10 +436,6 @@
         {
           "name": "keyword.other.section.pascal",
           "match": "(?i)\\b(interface|implementation|initialization|finalization|uses)\\b"
-        },
-        {
-          "name": "keyword.operator.word.pascal",
-          "match": "(?i)\\b(and|or|not|xor|shl|shr|div|mod|in|is|as)\\b"
         }
       ]
     },
@@ -473,6 +469,10 @@
     },
     "operators": {
       "patterns": [
+        {
+          "name": "keyword.control.operator.word.pascal",
+          "match": "(?i)\\b(and|or|not|xor|shl|shr|div|mod|in|is|as)\\b"
+        },
         {
           "name": "keyword.operator.assignment.pascal",
           "match": ":=|\\+=|-=|\\*=|/=|\\*\\*="
