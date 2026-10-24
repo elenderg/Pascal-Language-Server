@@ -1,40 +1,82 @@
 # Pascal Language Server
 
-Language Server for Pascal, with a VS Code client and a Free Pascal Compiler (FPC) diagnostics integration.
+A Language Server implementation for Pascal, for use with a Visual Studio Code client, semantic language features, and Free Pascal Compiler (FPC) diagnostics integration.
 
-## Functionality
+## Features
 
-The server provides completions, document symbols, diagnostics, hover, references, type definition, implementation, and go-to-definition. Definition lookup builds a symbol table from parsed Pascal declarations and follows `uses` dependencies recursively. Dependencies are resolved from open documents, the source file directory, workspace folders, and configured FPC `-Fu` paths.
+- **Document Symbols** — Navigate declarations within a Pascal source file.
+- **Diagnostics** — Report compiler diagnostics through Free Pascal Compiler (FPC) integration.
+- **Hover Information** — Inspect symbol information by hovering over identifiers.
+- **Go to Definition** — Navigate to symbol declarations.
+- **Go to Type Definition** — Navigate to the definition of a symbol's type.
+- **Go to Implementation** — Navigate to implementations of declared routines or other supported symbols.
+- **Find References** — Locate references to symbols across source files.
 
-An end-to-end test covers definition lookup through a chain of Pascal units.
+### Symbol Resolution
 
-Syntax highlighting is provided by the TextMate grammar in
-[`syntaxes/pascal.tmLanguage.json`](./syntaxes/pascal.tmLanguage.json), which covers
-Free Pascal declarations, types, routines, expressions, literals, operators,
-comments, and compiler directives.
+The language server parses Pascal declarations and builds a symbol table to support navigation and reference resolution.
 
-## Structure
+Unit dependencies declared through `uses` clauses are resolved recursively. The server searches for dependencies in the following locations:
 
-```
+- Currently open documents.
+- The directory containing the source file.
+- Workspace folders.
+- Free Pascal Compiler unit search paths configured through `-Fu`.
+
+An end-to-end test verifies definition lookup across a chain of dependent Pascal units.
+
+## Syntax Highlighting
+
+Syntax highlighting is provided by a custom TextMate grammar:
+
+[`syntaxes/pascal.tmLanguage.json`](./syntaxes/pascal.tmLanguage.json)
+
+The grammar covers Free Pascal syntax, including:
+
+- Type and variable declarations.
+- Procedures, functions, and formal parameters.
+- Expressions, operators, and function calls.
+- Keywords, literals, and identifiers.
+- Comments and compiler directives.
+
+The grammar is maintained separately from the language server's parsing and semantic analysis.
+
+## Project Structure
+
+```text
 .
-├── client // Language Client
-│   ├── src
-│   │   ├── test // End to End tests for Language Client / Server
-│   │   └── extension.ts // Language Client entry point
-├── package.json // The extension manifest.
-└── server // Language Server
-    └── src
-        └── server.ts // Language Server entry point
+├── client/
+│   └── src/
+│       ├── test/              # End-to-end tests
+│       └── extension.ts       # VS Code language client entry point
+├── server/
+│   └── src/
+│       └── server.ts          # Language server entry point
+├── syntaxes/
+│   └── pascal.tmLanguage.json # TextMate syntax highlighting grammar
+└── package.json               # Extension manifest and project scripts
 ```
 
-## Running the Sample
+## Development Setup
 
-- Run `npm install` in this folder. This installs all necessary npm modules in both the client and server folder
-- Open VS Code on this folder.
-- Press Ctrl+Shift+B to start compiling the client and server in [watch mode](https://code.visualstudio.com/docs/editor/tasks#:~:text=The%20first%20entry%20executes,the%20HelloWorld.js%20file.).
-- Switch to the Run and Debug View in the Sidebar (Ctrl+Shift+D).
-- Select `Launch Client` from the drop down (if it is not already).
-- Press ▷ to run the launch config (F5).
-- In the [Extension Development Host](https://code.visualstudio.com/api/get-started/your-first-extension#:~:text=Then%2C%20inside%20the%20editor%2C%20press%20F5.%20This%20will%20compile%20and%20run%20the%20extension%20in%20a%20new%20Extension%20Development%20Host%20window.) instance of VSCode, open a document in 'plain text' language mode.
-  - Type `j` or `t` to see `Javascript` and `TypeScript` completion.
-  - Enter text content such as `AAA aaa BBB`. The extension will emit diagnostics for all words in all-uppercase.
+### Prerequisites
+
+- [Node.js](https://nodejs.org/)
+- [npm](https://www.npmjs.com/)
+- [Visual Studio Code](https://code.visualstudio.com/)
+- [Free Pascal Compiler (FPC)](https://www.freepascal.org/), for compiler diagnostics and projects that require it.
+
+### Running the Extension
+
+1. Open the project folder in Visual Studio Code.
+2. Run `npm install` in the project root.
+3. Press `Ctrl+Shift+B` to compile the client and server in watch mode.
+4. Open the **Run and Debug** view with `Ctrl+Shift+D`.
+5. Select **Launch Client** from the debug configuration list.
+6. Press `F5` to launch the Extension Development Host.
+7. Open a Pascal source file in the development window to test the language features.
+
+## Testing
+
+The project includes an end-to-end test for symbol resolution across multiple Pascal units, validating navigation through recursively resolved `uses` dependencies.
+
