@@ -10,6 +10,7 @@
     { "include": "#numbers" },
     { "include": "#program-structure" },
     { "include": "#type-section" },
+    { "include": "#constant-declarations" },
     { "include": "#variable-declarations" },
     { "include": "#declaration-keywords" },
     { "include": "#routine-declarations" },
@@ -216,7 +217,7 @@
             { "include": "#strings" },
             { "include": "#numbers" },
             {
-              "name": "constant.other.enum.pascal",
+              "name": "entity.name.type.constant.other.enum.pascal",
               "match": "\\b[A-Za-z_][A-Za-z0-9_]*\\b"
             },
             { "include": "#operators" },
@@ -348,13 +349,33 @@
             "1": { "name": "variable.other.declaration.pascal" },
             "2": { "name": "punctuation.separator.type.pascal" }
           }
-        },
+        }
+      ]
+    },
+    "constant-declarations": {
+      "patterns": [
         {
-          "match": "^\\s*([A-Za-z_][A-Za-z0-9_]*)(\\s*)(=)(?!=)",
-          "captures": {
-            "1": { "name": "constant.other.definition.pascal" },
-            "3": { "name": "keyword.operator.assignment.pascal" }
-          }
+          "begin": "(?i)\\b(const)\\b",
+          "beginCaptures": {
+            "1": { "name": "storage.type.constant.pascal" }
+          },
+          "end": "(?i)(?=\\b(type|var|threadvar|resourcestring|label|procedure|function|constructor|destructor|operator|begin|initialization|finalization|implementation)\\b)",
+          "patterns": [
+            { "include": "#comments" },
+            { "include": "#compiler-directives" },
+            {
+              "match": "^\\s*([A-Za-z_][A-Za-z0-9_]*)(\\s*)(=)(?!=)",
+              "captures": {
+                "1": { "name": "variable.other.constant.definition.pascal" },
+                "3": { "name": "keyword.operator.assignment.pascal" }
+              }
+            },
+            { "include": "#built-in-types" },
+            { "include": "#numbers" },
+            { "include": "#strings" },
+            { "include": "#operators" },
+            { "include": "#punctuation" }
+          ]
         }
       ]
     },
