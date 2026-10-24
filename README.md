@@ -8,6 +8,11 @@ The server provides completions, document symbols, diagnostics, hover, reference
 
 An end-to-end test covers definition lookup through a chain of Pascal units.
 
+Syntax highlighting is provided by the TextMate grammar in
+[`syntaxes/pascal.tmLanguage.json`](./syntaxes/pascal.tmLanguage.json), which covers
+Free Pascal declarations, types, routines, expressions, literals, operators,
+comments, and compiler directives.
+
 ## Structure
 
 ```
