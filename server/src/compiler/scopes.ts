@@ -7,7 +7,6 @@ import { OverloadGroup, SubprogramSymbol as SubprogramSymbolClass } from './symb
 
 export enum ScopeKind {
 	Global = 'global',
-	Program = 'program',
 	Unit = 'unit',
 	InterfaceSection = 'interfaceSection',
 	ImplementationSection = 'implementationSection',
@@ -51,16 +50,15 @@ export abstract class BaseScope implements Scope {
 
 	define(symbol: Symbol): void {
 		symbol.declaringScope = this;
-		const nameLower = symbol.name.toLowerCase();
 
 		if (symbol instanceof SubprogramSymbolClass) {
 			const sub = symbol;
-			if (sub.isOverload || this.overloadGroups.has(nameLower)) {
-				let group = this.overloadGroups.get(nameLower);
+			if (sub.isOverload || this.overloadGroups.has(sub.name)) {
+				let group = this.overloadGroups.get(sub.name);
 				if (!group) {
 					group = new OverloadGroup(sub.name);
-					this.overloadGroups.set(nameLower, group);
-					const existing = this.symbols.get(nameLower);
+					this.overloadGroups.set(sub.name, group);
+					const existing = this.symbols.get(sub.name);
 					if (existing instanceof SubprogramSymbolClass) {
 						group.add(existing);
 					}
@@ -69,11 +67,11 @@ export abstract class BaseScope implements Scope {
 			}
 		}
 
-		this.symbols.set(nameLower, symbol);
+		this.symbols.set(symbol.name, symbol);
 	}
 
 	resolveLocal(name: string): Symbol | undefined {
-		return this.symbols.get(name.toLowerCase());
+		return this.symbols.get(name);
 	}
 
 	resolve(name: string): Symbol | undefined {
@@ -89,12 +87,11 @@ export abstract class BaseScope implements Scope {
 	}
 
 	getSubprograms(name: string): readonly SubprogramSymbol[] {
-		const nameLower = name.toLowerCase();
-		const group = this.overloadGroups.get(nameLower);
+		const group = this.overloadGroups.get(name);
 		if (group) {
 			return group.members;
 		}
-		const sym = this.symbols.get(nameLower);
+		const sym = this.symbols.get(name);
 		if (sym instanceof SubprogramSymbolClass) {
 			return [sym];
 		}
@@ -116,31 +113,6 @@ export class BlockScope extends BaseScope {
 
 	constructor(name: string, parent: Scope) {
 		super(name, parent);
-	}
-}
-
-/** Escopo específico para corpo de procedure. */
-export class ProcedureScope extends LocalScope {
-	constructor(name: string, parent: Scope) {
-		super(name, parent);
-	}
-}
-
-/** Escopo específico para corpo de function. */
-export class FunctionScope extends LocalScope {
-	constructor(name: string, parent: Scope) {
-		super(name, parent);
-	}
-}
-
-/** Escopo específico para corpo de method em classe. */
-export class MethodScope extends LocalScope {
-	/** Referência ao escopo da classe onde o método está declarado. */
-	readonly classScope: ClassScope | undefined;
-
-	constructor(name: string, parent: Scope, classScope?: ClassScope) {
-		super(name, parent);
-		this.classScope = classScope;
 	}
 }
 
@@ -317,19 +289,7 @@ export class InterfaceScope extends BaseScope {
 }
 
 /**
- * Escopo raiz para programas Pascal simples.
- * Não usa interface/implementation porque programas não possuem essas seções.
- */
-export class ProgramScope extends BaseScope {
-	readonly kind = ScopeKind.Program as const;
-
-	constructor(name: string, parent?: Scope) {
-		super(name, parent);
-	}
-}
-
-/**
- * Escopo raiz de uma unit.
+ * Escopo raiz de uma unit ou program.
  *
  * Cadeia de lookup (implementation):
  *   local → implementation → interface → uses → (parent global)

@@ -1,8 +1,6 @@
 import type { ProgramNode, UnitNode } from './ast';
 import { GlobalScope, UnitScope } from './scopes';
-import type { Scope } from './scopes';
 import type { UnitSymbol } from './symbols';
-import { SemanticVisitor } from './semantic';
 
 // ---------------------------------------------------------------------------
 // Modelos de documento e workspace
@@ -45,7 +43,7 @@ export class PascalDocument {
 	/** Raiz da AST — ProgramNode ou UnitNode após o parse. */
 	ast: ProgramNode | UnitNode | undefined;
 	/** Escopo raiz construído pelo analisador semântico. */
-	rootScope: Scope | undefined;
+	rootScope: UnitScope | undefined;
 	/** Símbolo da unit/programa correspondente a este documento. */
 	unitSymbol: UnitSymbol | undefined;
 
@@ -84,7 +82,7 @@ export class PascalDocument {
 		this.analysisPhase = AnalysisPhase.Parsed;
 	}
 
-	setScoped(rootScope: Scope, unitSymbol: UnitSymbol): void {
+	setScoped(rootScope: UnitScope, unitSymbol: UnitSymbol): void {
 		this.rootScope = rootScope;
 		this.unitSymbol = unitSymbol;
 		this.analysisPhase = AnalysisPhase.Scoped;
@@ -97,26 +95,6 @@ export class PascalDocument {
 
 	markComplete(): void {
 		this.analysisPhase = AnalysisPhase.Complete;
-	}
-
-	/**
-	 * Executa análise semântica no documento.
-	 * Cria árvore de escopos e tabela de símbolos a partir da AST.
-	 */
-	analyzeSemantic(): void {
-		if (this.ast === undefined || this.analysisPhase === AnalysisPhase.Scoped) {
-			return;
-		}
-
-		const visitor = new SemanticVisitor(this);
-		visitor.analyze();
-
-		this.rootScope = visitor.getRootScope();
-		this.unitSymbol = visitor.getUnitSymbol();
-
-		if (this.rootScope !== undefined && this.unitSymbol !== undefined) {
-			this.setScoped(this.rootScope, this.unitSymbol);
-		}
 	}
 
 	get isAnalyzed(): boolean {
@@ -185,12 +163,10 @@ export class PascalWorkspace {
 	 * A ligação concreta de uses será feita pelo SemanticAnalyzer.
 	 */
 	registerUnit(doc: PascalDocument): void {
-		if (doc.kind !== DocumentKind.Unit || doc.rootScope === undefined || doc.unitSymbol === undefined) {
+		if (doc.rootScope === undefined || doc.unitSymbol === undefined) {
 			return;
 		}
-		if (doc.rootScope instanceof UnitScope) {
-			this.globalScope.registerUnit(doc.unitSymbol.unitName, doc.rootScope);
-		}
+		this.globalScope.registerUnit(doc.unitSymbol.unitName, doc.rootScope);
 	}
 
 	/**

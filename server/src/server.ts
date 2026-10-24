@@ -13,7 +13,7 @@ import {
 	CompletionItem,
 	TextDocumentSyncKind,
 	InitializeResult,
-	//Location,
+	Location,
 	DocumentSymbol,
 	Range
 } from 'vscode-languageserver/node';
@@ -29,17 +29,10 @@ import * as os from 'os';
 import * as url from 'url';
 
 import {
-	goToDefinition,
-	findReferences,
-	hover,
-	getCompletion,
-	rename,
-	getDocumentSymbols,
-	goToTypeDefinition,
-	goToImplementation,
-} from './semanticLSP';
-import { PascalDocument, PascalWorkspace, DocumentKind, AnalysisPhase } from './compiler/models';
-import { parsePascalDocument } from './compiler/old_parser';
+	parseDocumentSymbols,
+	getCompletions
+} from './pascalParser';
+import { PascalDefinitionIndex } from './compiler/definitionIndex';
 
 // Create a connection for the server, using Node's IPC as a transport.
 // Also include all preview / proposed LSP features.
@@ -47,35 +40,17 @@ const connection = createConnection(ProposedFeatures.all);
 
 // Create a simple text document manager.
 const documents = new TextDocuments(TextDocument);
-
-const workspace = new PascalWorkspace();
-
-function getPascalDocument(textDocument: TextDocument): PascalDocument {
-	//console.log("Getting Pascal document for URI: " + textDocument.uri);
-	return workspace.getDocument(textDocument.uri)
-		?? workspace.openDocument(textDocument.uri, textDocument.getText(), textDocument.version);
-}
-
-function ensureSemanticAnalysis(document: PascalDocument): PascalDocument {
-	if (document.ast === undefined) {
-		console.log("Parsing document for URI: " + document.uri);
-		const ast = parsePascalDocument(TextDocument.create(document.uri, 'pascal', document.version, document.text));
-		document.setParsed(ast, ast.kind === 'Unit' ? DocumentKind.Unit : DocumentKind.Program);
-	}
-	if (document.analysisPhase === AnalysisPhase.None || document.analysisPhase === AnalysisPhase.Parsed) {
-		document.analyzeSemantic();
-	}
-	if (document.rootScope !== undefined && document.unitSymbol !== undefined) {
-		workspace.registerUnit(document);
-	}
-	return document;
-}
+const definitionIndex = new PascalDefinitionIndex();
+let workspaceSearchPaths: string[] = [];
 
 let hasConfigurationCapability = false;
 let hasWorkspaceFolderCapability = false;
 
 connection.onInitialize((params: InitializeParams) => {
 	const capabilities = params.capabilities;
+	workspaceSearchPaths = (params.workspaceFolders ?? [])
+		.filter(folder => folder.uri.startsWith('file://'))
+		.map(folder => url.fileURLToPath(folder.uri));
 
 	// Does the client support the `workspace/configuration` request?
 	// If not, we fall back using global settings.
@@ -98,8 +73,7 @@ connection.onInitialize((params: InitializeParams) => {
 			implementationProvider: true,
 			referencesProvider: true,
 			hoverProvider: true,
-			documentSymbolProvider: true,
-			renameProvider: true
+			documentSymbolProvider: true
 		}
 	};
 	if (hasWorkspaceFolderCapability) {
@@ -173,12 +147,32 @@ function getDocumentSettings(resource: string): Thenable<PascalSettings> {
 	return result;
 }
 
+function getDefinitionSearchPaths(document: TextDocument, settings: PascalSettings): string[] {
+	const searchPaths = [...workspaceSearchPaths];
+	if (!document.uri.startsWith('file://')) {
+		return searchPaths;
+	}
+
+	const documentDirectory = path.dirname(url.fileURLToPath(document.uri));
+	searchPaths.unshift(documentDirectory);
+	for (let index = 0; index < settings.compilerOptions.length; index++) {
+		const option = settings.compilerOptions[index];
+		if (option === '-Fu' && settings.compilerOptions[index + 1]) {
+			searchPaths.push(path.resolve(documentDirectory, settings.compilerOptions[++index]));
+		} else if (option.startsWith('-Fu') && option.length > 3) {
+			searchPaths.push(path.resolve(documentDirectory, option.slice(3)));
+		}
+	}
+	return searchPaths;
+}
+
 const filesWithDiagnostics = new Set<string>();
 const activeProcesses = new Map<string, childProcess.ChildProcess>();
 const validationTimers = new Map<string, NodeJS.Timeout>();
 
 // Only keep settings for open documents
 documents.onDidClose(e => {
+	definitionIndex.removeDocument(e.document.uri);
 	documentSettings.delete(e.document.uri);
 	const timer = validationTimers.get(e.document.uri);
 	if (timer) {
@@ -190,7 +184,7 @@ documents.onDidClose(e => {
 		proc.kill();
 		activeProcesses.delete(e.document.uri);
 	}
-	workspace.closeDocument(e.document.uri);
+	// Clear diagnostics for closed document
 	connection.sendDiagnostics({ uri: e.document.uri, diagnostics: [] });
 	filesWithDiagnostics.delete(e.document.uri);
 });
@@ -198,10 +192,7 @@ documents.onDidClose(e => {
 // The content of a text document has changed. This event is emitted
 // when the text document first opened or when its content has changed.
 documents.onDidChangeContent(async change => {
-	const document = workspace.updateDocument(change.document.uri, change.document.getText(), change.document.version);
-	if (document !== undefined) {
-		ensureSemanticAnalysis(document);
-	}
+	definitionIndex.indexDocument(change.document.uri, change.document.getText());
 	const settings = await getDocumentSettings(change.document.uri);
 	if (settings.checkTrigger === 'onChange') {
 		const existingTimer = validationTimers.get(change.document.uri);
@@ -217,14 +208,11 @@ documents.onDidChangeContent(async change => {
 });
 
 documents.onDidSave(change => {
-	const document = workspace.openDocument(change.document.uri, change.document.getText(), change.document.version);
-	ensureSemanticAnalysis(document);
 	validateTextDocument(change.document);
 });
 
 documents.onDidOpen(change => {
-	const document = workspace.openDocument(change.document.uri, change.document.getText(), change.document.version);
-	ensureSemanticAnalysis(document);
+	definitionIndex.indexDocument(change.document.uri, change.document.getText());
 	validateTextDocument(change.document);
 });
 
@@ -284,13 +272,13 @@ async function validateTextDocument(textDocument: TextDocument): Promise<void> {
 		let stderr = '';
 
 		if (child.stdout) {
-			child.stdout.on('data', (data: Buffer | string) => {
-				stdout += data.toString();
+			child.stdout.on('data', data => {
+				stdout += data;
 			});
 		}
 		if (child.stderr) {
-			child.stderr.on('data', (data: Buffer | string) => {
-				stderr += data.toString();
+			child.stderr.on('data', data => {
+				stderr += data;
 			});
 		}
 
@@ -434,8 +422,7 @@ connection.onDidChangeWatchedFiles(_change => {
 connection.onCompletion((params): CompletionItem[] => {
 	const document = documents.get(params.textDocument.uri);
 	if (document) {
-		const pascalDoc = ensureSemanticAnalysis(getPascalDocument(document));
-		return getCompletion(pascalDoc, params.position);
+		return getCompletions(document);
 	}
 	return [];
 });
@@ -446,86 +433,187 @@ connection.onCompletionResolve((item: CompletionItem): CompletionItem => {
 });
 
 // Document Symbol Handler
-connection.onDocumentSymbol((params): DocumentSymbol[] => {	
+connection.onDocumentSymbol((params): DocumentSymbol[] => {
 	const document = documents.get(params.textDocument.uri);
 	if (document) {
-		console.log("onDocumentSymbol called for: " + params.textDocument.uri);
-		const pascalDoc = ensureSemanticAnalysis(getPascalDocument(document));
-		if (pascalDoc.ast === undefined) {
-			console.log("AST is undefined for: " + params.textDocument.uri);
-		} else {
-			console.log("AST is defined for: " + params.textDocument.uri);		
-		}
-		
-		return getDocumentSymbols(pascalDoc);
+		return parseDocumentSymbols(document);
 	}
-	process.on("uncaughtException", err => {
-    console.error(err);
-	});
-
-	process.on("unhandledRejection", err => {
-			console.error(err);
-	});
 	return [];
 });
 
+function getWordAtPosition(document: TextDocument, position: { line: number, character: number }): string {
+	const text = document.getText();
+	const offset = document.offsetAt(position);
+	
+	let start = offset;
+	while (start > 0 && /[a-zA-Z0-9_]/.test(text[start - 1])) {
+		start--;
+	}
+	let end = offset;
+	while (end < text.length && /[a-zA-Z0-9_]/.test(text[end])) {
+		end++;
+	}
+
+	return text.slice(start, end);
+}
+
 // Go to Definition Handler
-connection.onDefinition((params) => {
+connection.onDefinition(async (params) => {
 	const document = documents.get(params.textDocument.uri);
 	if (!document) {
 		return null;
 	}
-	const pascalDoc = ensureSemanticAnalysis(getPascalDocument(document));
-	return goToDefinition(pascalDoc, params.position);
+
+	const word = getWordAtPosition(document, params.position);
+	try {
+		const settings = await getDocumentSettings(document.uri);
+		const symbol = await definitionIndex.findDefinition(
+			document.uri,
+			word,
+			getDefinitionSearchPaths(document, settings),
+			params.position,
+		);
+		if (symbol) {
+			return {
+				uri: symbol.uri,
+				range: symbol.range
+			} satisfies Location;
+		}
+	} catch (error) {
+		connection.console.error(`Error resolving Pascal definition: ${error}`);
+	}
+
+	return null;
 });
 
-connection.onTypeDefinition((params) => {
+// Go to Type Definition Handler
+connection.onTypeDefinition(async (params) => {
 	const document = documents.get(params.textDocument.uri);
 	if (!document) {
 		return null;
 	}
-	const pascalDoc = ensureSemanticAnalysis(getPascalDocument(document));
-	return goToTypeDefinition(pascalDoc, params.position);
+
+	const word = getWordAtPosition(document, params.position);
+	try {
+		const settings = await getDocumentSettings(document.uri);
+		const symbol = await definitionIndex.findTypeDefinition(
+			document.uri,
+			word,
+			getDefinitionSearchPaths(document, settings),
+			params.position,
+		);
+		if (symbol) {
+			return {
+				uri: symbol.uri,
+				range: symbol.range
+			} satisfies Location;
+		}
+	} catch (error) {
+		connection.console.error(`Error resolving Pascal type definition: ${error}`);
+	}
+	return null;
 });
 
-connection.onImplementation((params) => {
+// Go to Implementation Handler
+connection.onImplementation(async (params) => {
 	const document = documents.get(params.textDocument.uri);
 	if (!document) {
 		return null;
 	}
-	const pascalDoc = ensureSemanticAnalysis(getPascalDocument(document));
-	return goToImplementation(pascalDoc, params.position);
+
+	const word = getWordAtPosition(document, params.position);
+	try {
+		const settings = await getDocumentSettings(document.uri);
+		const symbols = await definitionIndex.findImplementation(
+			document.uri,
+			word,
+			getDefinitionSearchPaths(document, settings),
+			params.position,
+		);
+		if (symbols.length > 0) {
+			return symbols.map(symbol => ({
+				uri: symbol.uri,
+				range: symbol.range
+			} satisfies Location));
+		}
+	} catch (error) {
+		connection.console.error(`Error resolving Pascal implementation: ${error}`);
+	}
+	return null;
 });
 
 // Find References Handler
-connection.onReferences((params) => {
+connection.onReferences(async (params) => {
 	const document = documents.get(params.textDocument.uri);
 	if (!document) {
 		return null;
 	}
-	const pascalDoc = ensureSemanticAnalysis(getPascalDocument(document));
-	const includeDeclaration = params.context.includeDeclaration;
-	return findReferences(pascalDoc, params.position, includeDeclaration);
+
+	const word = getWordAtPosition(document, params.position);
+	try {
+		const settings = await getDocumentSettings(document.uri);
+		const symbols = await definitionIndex.findReferences(
+			document.uri,
+			word,
+			params.context.includeDeclaration,
+			getDefinitionSearchPaths(document, settings),
+			params.position,
+		);
+		return symbols.map(symbol => ({
+			uri: symbol.uri,
+			range: symbol.range
+		} satisfies Location));
+	} catch (error) {
+		connection.console.error(`Error resolving Pascal references: ${error}`);
+		return null;
+	}
 });
 
 // Hover Handler
-connection.onHover((params) => {
+connection.onHover(async (params) => {
 	const document = documents.get(params.textDocument.uri);
 	if (!document) {
 		return null;
 	}
-	const pascalDoc = ensureSemanticAnalysis(getPascalDocument(document));
-	return hover(pascalDoc, params.position);
-});
 
-// Rename Handler
-connection.onRenameRequest((params) => {
-	const document = documents.get(params.textDocument.uri);
-	if (!document) {
-		return null;
+	const word = getWordAtPosition(document, params.position);
+	try {
+		const settings = await getDocumentSettings(document.uri);
+		const symbol = await definitionIndex.findDefinition(
+			document.uri,
+			word,
+			getDefinitionSearchPaths(document, settings),
+			params.position,
+		);
+		if (symbol) {
+			let lineContent: string;
+			if (symbol.uri === document.uri) {
+				lineContent = document.getText().split(/\r?\n/)[symbol.range.start.line] ?? '';
+			} else {
+				const definitionDocument = documents.get(symbol.uri);
+				if (definitionDocument) {
+					lineContent = definitionDocument.getText().split(/\r?\n/)[symbol.range.start.line] ?? '';
+				} else {
+					const source = await fs.promises.readFile(url.fileURLToPath(symbol.uri), 'utf8');
+					lineContent = source.split(/\r?\n/)[symbol.range.start.line] ?? '';
+				}
+			}
+			return {
+				contents: {
+					kind: 'markdown',
+					value: [
+						'```pascal',
+						lineContent.trim(),
+						'```'
+					].join('\n')
+				}
+			};
+		}
+	} catch (error) {
+		connection.console.error(`Error resolving Pascal hover: ${error}`);
 	}
-	const pascalDoc = ensureSemanticAnalysis(getPascalDocument(document));
-	return rename(pascalDoc, params.position, params.newName);
+
+	return null;
 });
 
 // Make the text document manager listen on the connection

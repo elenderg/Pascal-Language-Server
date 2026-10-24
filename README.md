@@ -1,14 +1,12 @@
-# LSP Example
+# Pascal Language Server
 
-Heavily documented sample code for https://code.visualstudio.com/api/language-extensions/language-server-extension-guide
+Language Server for Pascal, with a VS Code client and a Free Pascal Compiler (FPC) diagnostics integration.
 
 ## Functionality
 
-This Language Server works for plain text file. It has the following language features:
-- Completions
-- Diagnostics regenerated on each file change or configuration change
+The server provides completions, document symbols, diagnostics, hover, references, type definition, implementation, and go-to-definition. Definition lookup builds a symbol table from parsed Pascal declarations and follows `uses` dependencies recursively. Dependencies are resolved from open documents, the source file directory, workspace folders, and configured FPC `-Fu` paths.
 
-It also includes an End-to-End test.
+An end-to-end test covers definition lookup through a chain of Pascal units.
 
 ## Structure
 
