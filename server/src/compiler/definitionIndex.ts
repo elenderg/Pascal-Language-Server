@@ -38,9 +38,16 @@ class DefinitionDeclarationNode extends ASTNode {
 		readonly typeName?: string,
 		readonly ownerTypeName?: string,
 		readonly ownerSubprogramName?: string,
+		readonly ownerSubprogramStartIndex?: number,
 	) {
 		super(range);
 	}
+}
+
+interface SubprogramScope {
+	readonly name: string;
+	readonly startIndex: number;
+	readonly endIndex: number;
 }
 
 interface WithScope {
@@ -92,6 +99,7 @@ interface IndexedDocument {
 	readonly tokens: readonly Token[];
 	readonly ast: DefinitionAst;
 	readonly symbols: DefinitionSymbolTable;
+	readonly subprogramScopes: readonly SubprogramScope[];
 }
 
 const identifierStart = (character: string): boolean =>
@@ -198,6 +206,85 @@ function isIdentifier(token: Token | undefined): token is Token {
 	return token !== undefined && identifierStart(token.value[0]);
 }
 
+function findSubprogramScopes(tokens: readonly Token[]): SubprogramScope[] {
+	const scopes: SubprogramScope[] = [];
+	for (let index = 0; index < tokens.length; index++) {
+		const kind = tokens[index].value.toLowerCase();
+		if (!['procedure', 'function', 'constructor', 'destructor'].includes(kind)) {
+			continue;
+		}
+
+		const nameIndex = tokens[index + 1]?.value.toLowerCase() === 'class'
+			? index + 2
+			: index + 1;
+		if (!isIdentifier(tokens[nameIndex])) {
+			continue;
+		}
+		const name = tokens[nameIndex + 1]?.value === '.' && isIdentifier(tokens[nameIndex + 2])
+			? tokens[nameIndex + 2].value
+			: tokens[nameIndex].value;
+
+		let headerEndIndex = nameIndex + 1;
+		let parentheses = 0;
+		while (headerEndIndex < tokens.length) {
+			const value = tokens[headerEndIndex].value;
+			if (value === '(') {
+				parentheses++;
+			} else if (value === ')') {
+				parentheses--;
+			} else if (value === ';' && parentheses === 0) {
+				break;
+			}
+			headerEndIndex++;
+		}
+		if (headerEndIndex >= tokens.length) {
+			continue;
+		}
+
+		let endIndex = headerEndIndex;
+		for (let cursor = headerEndIndex + 1; cursor < tokens.length; cursor++) {
+			const value = tokens[cursor].value.toLowerCase();
+			if (
+				['procedure', 'function', 'constructor', 'destructor', 'interface', 'implementation',
+					'initialization', 'finalization'].includes(value) ||
+				['forward', 'external', 'abstract'].includes(value)
+			) {
+				break;
+			}
+			if (value !== 'begin') {
+				continue;
+			}
+
+			let depth = 1;
+			let bodyEnd = cursor + 1;
+			for (; bodyEnd < tokens.length && depth > 0; bodyEnd++) {
+				const bodyToken = tokens[bodyEnd].value.toLowerCase();
+				if (bodyToken === 'begin' || bodyToken === 'case' || bodyToken === 'try') {
+					depth++;
+				} else if (bodyToken === 'end') {
+					depth--;
+				}
+			}
+			if (depth === 0) {
+				endIndex = bodyEnd - 1;
+			}
+			break;
+		}
+
+		scopes.push({ name, startIndex: index, endIndex });
+	}
+	return scopes;
+}
+
+function findSubprogramScopeAtIndex(
+	scopes: readonly SubprogramScope[],
+	index: number,
+): SubprogramScope | undefined {
+	return scopes
+		.filter(scope => index >= scope.startIndex && index <= scope.endIndex)
+		.sort((left, right) => right.startIndex - left.startIndex)[0];
+}
+
 function readQualifiedIdentifier(
 	tokens: readonly Token[],
 	startIndex: number,
@@ -230,6 +317,7 @@ function readQualifiedIdentifier(
 
 function parseDocument(uri: string, text: string): IndexedDocument {
 	const tokens = tokenize(text);
+	const subprogramScopes = findSubprogramScopes(tokens);
 	const declarations: DefinitionDeclarationNode[] = [];
 	const usesClauses: UsesClauseNode[] = [];
 	const withScopes: WithScope[] = [];
@@ -352,6 +440,7 @@ function parseDocument(uri: string, text: string): IndexedDocument {
 									parameterType,
 									undefined,
 									nameToken.value,
+									index,
 								));
 							}
 							while (cursor < tokens.length && tokens[cursor].value !== ';' && tokens[cursor].value !== ')') {
@@ -364,6 +453,7 @@ function parseDocument(uri: string, text: string): IndexedDocument {
 							break;
 						}
 					}
+					index = Math.min(cursor, tokens.length - 1);
 				}
 			}
 			declarationMode = 'none';
@@ -392,6 +482,9 @@ function parseDocument(uri: string, text: string): IndexedDocument {
 							declarationSection,
 							undefined,
 							typeName,
+							undefined,
+							findSubprogramScopeAtIndex(subprogramScopes, index)?.name,
+							findSubprogramScopeAtIndex(subprogramScopes, index)?.startIndex,
 						));
 					}
 				}
@@ -666,7 +759,7 @@ function parseDocument(uri: string, text: string): IndexedDocument {
 		}
 		symbols.define(symbol);
 	}
-	return { uri, text, tokens, ast, symbols };
+	return { uri, text, tokens, ast, symbols, subprogramScopes };
 }
 
 export class PascalDefinitionIndex {
@@ -786,6 +879,48 @@ export class PascalDefinitionIndex {
 		}
 
 		const documents = await this.getReachableDocuments(root, searchPaths);
+		const targetDeclaration = target.declaringNode;
+		const targetOwnerSubprogramStartIndex = targetDeclaration instanceof DefinitionDeclarationNode
+			? targetDeclaration.ownerSubprogramStartIndex
+			: undefined;
+		const targetSubprogramScope = targetOwnerSubprogramStartIndex !== undefined
+			? documents
+				.find(document => document.uri === target.uri)
+				?.subprogramScopes.find(scope => scope.startIndex === targetOwnerSubprogramStartIndex)
+			: undefined;
+		if (targetSubprogramScope) {
+			const targetDocument = documents.find(document => document.uri === target.uri);
+			if (!targetDocument) {
+				return [];
+			}
+			const declarationPositions = new Set(
+				targetDocument.ast.declarations
+					.filter(declaration =>
+						declaration.identifier.name.toLowerCase() === target.name.toLowerCase() &&
+						declaration.ownerSubprogramStartIndex === targetOwnerSubprogramStartIndex,
+					)
+					.map(declaration =>
+						`${declaration.identifier.range.start.line}:${declaration.identifier.range.start.character}`,
+					),
+			);
+			return targetDocument.tokens
+				.filter((token, index) =>
+					index >= targetSubprogramScope.startIndex &&
+					index <= targetSubprogramScope.endIndex &&
+					token.value.toLowerCase() === target.name.toLowerCase() &&
+					(
+						includeDeclaration ||
+						!declarationPositions.has(`${token.line}:${token.character}`)
+					),
+				)
+				.map(token => new VariableSymbol(
+					target.name,
+					tokenRange(token),
+					targetDocument.uri,
+					new UnresolvedType(target.name),
+				));
+		}
+
 		for (const candidate of this.openDocuments.values()) {
 			if (candidate.uri === target.uri || documents.some(item => item.uri === candidate.uri)) {
 				continue;
@@ -828,12 +963,53 @@ export class PascalDefinitionIndex {
 		position: Position | undefined,
 		searchPaths: readonly string[],
 	): Promise<Symbol | undefined> {
+		const local = this.resolveSubprogramLocal(document, word, position);
+		if (local) {
+			return local;
+		}
 		const memberAccess = await this.resolveExplicitMemberAccess(document, word, position, searchPaths);
 		if (memberAccess) {
 			return memberAccess;
 		}
 		const field = await this.resolveWithField(document, word, position, searchPaths);
 		return field ?? this.findInDocument(document, word, searchPaths, new Set(), true);
+	}
+
+	private resolveSubprogramLocal(
+		document: IndexedDocument,
+		word: string,
+		position: Position | undefined,
+	): Symbol | undefined {
+		if (!position) {
+			return undefined;
+		}
+		const tokenIndex = document.tokens.findIndex(token =>
+			token.line === position.line &&
+			position.character >= token.character &&
+			position.character <= token.character + token.value.length,
+		);
+		if (tokenIndex < 0) {
+			return undefined;
+		}
+		const scope = findSubprogramScopeAtIndex(document.subprogramScopes, tokenIndex);
+		if (!scope) {
+			return undefined;
+		}
+
+		const symbols = document.symbols.getAll();
+		for (let index = symbols.length - 1; index >= 0; index--) {
+			const symbol = symbols[index];
+			const declaration = symbol.declaringNode;
+			if (
+				symbol.name.toLowerCase() === word.toLowerCase() &&
+				declaration instanceof DefinitionDeclarationNode &&
+				declaration.kind === 'variable' &&
+				declaration.ownerSubprogramStartIndex === scope.startIndex
+			) {
+				return symbol;
+			}
+		}
+		return undefined;
 	}
 
 	private async resolveExplicitMemberAccess(

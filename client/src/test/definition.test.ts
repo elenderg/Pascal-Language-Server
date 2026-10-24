@@ -78,6 +78,68 @@ suite('Go to definition', () => {
     );
   });
 
+  test('Resolves parameter definitions and references in the containing routine', async () => {
+    const docUri = getDocUri('symbol_scope_test.pas');
+    await activate(docUri);
+
+    const cases = [
+      {
+        routine: 'CalcularSoma',
+        parameter: 'A',
+        declarationLine: 9,
+        referencePosition: 'CalcularSoma := A + B',
+        referenceLines: [9, 11],
+      },
+      {
+        routine: 'CalcularSoma',
+        parameter: 'B',
+        declarationLine: 9,
+        referencePosition: 'CalcularSoma := A + B',
+        referenceLines: [9, 11],
+      },
+      {
+        routine: 'MaiorValor',
+        parameter: 'A',
+        declarationLine: 14,
+        referencePosition: 'if A > B',
+        referenceLines: [14, 16, 17],
+      },
+      {
+        routine: 'MaiorValor',
+        parameter: 'B',
+        declarationLine: 14,
+        referencePosition: 'if A > B',
+        referenceLines: [14, 16, 19],
+      },
+    ];
+
+    for (const item of cases) {
+      const declarationPosition = findPosition(item.parameter, `function ${item.routine}`);
+      const definition = await vscode.commands.executeCommand<vscode.Location[]>(
+        'vscode.executeDefinitionProvider',
+        docUri,
+        declarationPosition,
+      );
+
+      assert.ok(definition, `Expected definition for ${item.routine}.${item.parameter}`);
+      assert.strictEqual(definition.length, 1);
+      assert.strictEqual(definition[0].range.start.line, item.declarationLine);
+
+      const references = await vscode.commands.executeCommand<vscode.Location[]>(
+        'vscode.executeReferenceProvider',
+        docUri,
+        findPosition(item.parameter, item.referencePosition),
+        { includeDeclaration: true },
+      );
+
+      assert.ok(references, `Expected references for ${item.routine}.${item.parameter}`);
+      assert.deepStrictEqual(
+        references.map(reference => reference.range.start.line).sort((left, right) => left - right),
+        item.referenceLines,
+      );
+    }
+  });
+
   test('Resolves record fields inside a with block', async () => {
     const docUri = getDocUri('with_record_test.pas');
     await activate(docUri);

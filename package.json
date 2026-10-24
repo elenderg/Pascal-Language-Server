@@ -45,7 +45,7 @@
       {
         "language": "pascal",
         "scopeName": "source.pascal",
-        "path": "./syntaxes/Pascal.tmLanguage.json"
+        "path": "./syntaxes/pascal.tmLanguage.json"
       }
     ],
     "configuration": {
