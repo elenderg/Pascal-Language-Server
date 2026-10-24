@@ -176,6 +176,16 @@
     "type-declaration": {
       "patterns": [
         {
+          "match": "(?i)([A-Za-z_][A-Za-z0-9_]*)\\s*(=)\\s*(\\^)\\s*(?:(Boolean|ByteBool|WordBool|LongBool|Byte|ShortInt|SmallInt|Integer|LongInt|LongWord|Cardinal|Int64|QWord|NativeInt|NativeUInt|Word|Real|Single|Double|Extended|Comp|Currency|Char|AnsiChar|WideChar|UnicodeChar|String|ShortString|AnsiString|WideString|UnicodeString|PChar|PAnsiChar|PWideChar|Pointer|Variant|TObject|TClass|TComponent|Text|File)\\b|([A-Za-z_][A-Za-z0-9_]*(?:\\.[A-Za-z_][A-Za-z0-9_]*)*)\\b)",
+          "captures": {
+            "1": { "name": "entity.name.type.pascal" },
+            "2": { "name": "keyword.operator.assignment.pascal" },
+            "3": { "name": "keyword.operator.pointer.pascal" },
+            "4": { "name": "storage.type.built-in.pascal" },
+            "5": { "name": "entity.name.type.pascal" }
+          }
+        },
+        {
           "match": "(?i)\\b(of)(\\s+)(\\^?\\s*(Boolean|ByteBool|WordBool|LongBool|Byte|ShortInt|SmallInt|Integer|LongInt|LongWord|Cardinal|Int64|QWord|NativeInt|NativeUInt|Word|Real|Single|Double|Extended|Comp|Currency|Char|AnsiChar|WideChar|UnicodeChar|String|ShortString|AnsiString|WideString|UnicodeString|PChar|PAnsiChar|PWideChar|Pointer|Variant|TObject|TClass|TComponent|Text|File)\\b)",
           "captures": {
             "1": { "name": "storage.type.modifier.pascal" },
@@ -266,7 +276,7 @@
         {
           "match": "(?i)(?<=:)\\s*(\\^?\\s*)((?!(?:Boolean|ByteBool|WordBool|LongBool|Byte|ShortInt|SmallInt|Integer|LongInt|LongWord|Cardinal|Int64|QWord|NativeInt|NativeUInt|Word|Real|Single|Double|Extended|Comp|Currency|Char|AnsiChar|WideChar|UnicodeChar|String|ShortString|AnsiString|WideString|UnicodeString|PChar|PAnsiChar|PWideChar|Pointer|Variant|TObject|TClass|TComponent|Text|File)\\b)[A-Za-z_][A-Za-z0-9_]*(?:\\.[A-Za-z_][A-Za-z0-9_]*)*)\\b",
           "captures": {
-          	"2": { "name": "entity.name.type.pascal" }
+            "2": { "name": "entity.name.type.pascal" }
           }
         },
         {
@@ -421,7 +431,11 @@
         },
         {
           "name": "keyword.operator.address.pascal",
-          "match": "@|\\^"
+          "match": "@"
+        },
+        {
+          "name": "keyword.operator.pointer.pascal",
+          "match": "\\^"
         },
         {
           "name": "punctuation.accessor.pascal",
