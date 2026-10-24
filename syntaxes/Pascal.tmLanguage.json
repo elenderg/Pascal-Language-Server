@@ -464,6 +464,10 @@
         {
           "name": "variable.other.member.pascal",
           "match": "(?<=\\.)[A-Za-z_][A-Za-z0-9_]*"
+        },
+        {
+          "name": "variable.other.pascal",
+          "match": "\\b[A-Za-z_][A-Za-z0-9_]*\\b"
         }
       ]
     },
