@@ -15,6 +15,7 @@ import {
 	SubprogramSymbol,
 	Symbol,
 	TypeSymbol,
+	UnitSymbol,
 	VariableSymbol,
 } from './symbols';
 import { UnresolvedType } from './types';
@@ -200,6 +201,19 @@ function tokenRange(token: Token): Range {
 		token.line,
 		token.character + token.value.length,
 	);
+}
+
+function isPositionInRange(position: Position, range: Range): boolean {
+	if (position.line < range.start.line || position.line > range.end.line) {
+		return false;
+	}
+	if (position.line === range.start.line && position.character < range.start.character) {
+		return false;
+	}
+	if (position.line === range.end.line && position.character > range.end.character) {
+		return false;
+	}
+	return true;
 }
 
 function isIdentifier(token: Token | undefined): token is Token {
@@ -786,6 +800,21 @@ export class PascalDefinitionIndex {
 		if (!root) {
 			return undefined;
 		}
+
+		// Check if the word is a unit name in one of the uses clauses
+		for (const usesClause of root.ast.usesClauses) {
+			for (const unit of usesClause.units) {
+				if (unit.name.toLowerCase() === word.toLowerCase()) {
+					if (!position || isPositionInRange(position, unit.range)) {
+						const dependency = await this.resolveUnit(root, unit.name, searchPaths);
+						if (dependency) {
+							return this.createUnitSymbol(dependency);
+						}
+					}
+				}
+			}
+		}
+
 		const contextual = await this.resolveSymbolAtPosition(root, word, position, searchPaths);
 		if (contextual) {
 			return contextual;
@@ -1312,6 +1341,30 @@ export class PascalDefinitionIndex {
 			(declaration.section === 'interface' || declaration.section === 'program');
 	}
 
+	private createUnitSymbol(document: IndexedDocument): UnitSymbol {
+		let unitRange = Range.create(0, 0, 0, 0);
+		for (let i = 0; i < document.tokens.length - 1; i++) {
+			if (document.tokens[i].value.toLowerCase() === 'unit' && isIdentifier(document.tokens[i + 1])) {
+				const unitToken = document.tokens[i + 1];
+				unitRange = tokenRange(unitToken);
+				break;
+			}
+		}
+		let unitName = document.ast.unitName;
+		if (!unitName) {
+			try {
+				unitName = path.basename(fileURLToPath(document.uri));
+			} catch {
+				unitName = 'Unit';
+			}
+		}
+		return new UnitSymbol(
+			unitName,
+			unitRange,
+			document.uri,
+		);
+	}
+
 	private async resolveUnit(
 		owner: IndexedDocument,
 		unitName: string,
@@ -1323,9 +1376,18 @@ export class PascalDefinitionIndex {
 		} catch {
 			ownerDirectory = '';
 		}
-		const opened = [...this.openDocuments.values()].filter(document =>
-			document.ast.unitName?.toLowerCase() === unitName.toLowerCase(),
-		);
+		const opened = [...this.openDocuments.values()].filter(document => {
+			if (document.ast.unitName?.toLowerCase() === unitName.toLowerCase()) {
+				return true;
+			}
+			try {
+				const fileName = path.basename(fileURLToPath(document.uri));
+				const baseName = fileName.replace(/\.[^.]+$/, '');
+				return baseName.toLowerCase() === unitName.toLowerCase();
+			} catch {
+				return false;
+			}
+		});
 		const preferredOpen = opened.find(document => {
 			try {
 				return path.dirname(fileURLToPath(document.uri)).toLowerCase() === ownerDirectory.toLowerCase();
@@ -1341,12 +1403,26 @@ export class PascalDefinitionIndex {
 			...searchPaths,
 		])];
 		for (const directory of directories) {
+			let dirFiles: string[];
+			try {
+				dirFiles = await fs.promises.readdir(directory);
+			} catch {
+				continue;
+			}
 			for (const extension of ['.pas', '.pp', '.p']) {
-				const candidate = path.resolve(directory, `${unitName}${extension}`);
+				const expectedLower = `${unitName.toLowerCase()}${extension.toLowerCase()}`;
+				const actualFileName = dirFiles.find(file => file.toLowerCase() === expectedLower);
+				if (!actualFileName) {
+					continue;
+				}
+				const candidate = path.resolve(directory, actualFileName);
 				try {
 					const text = await fs.promises.readFile(candidate, 'utf8');
 					const parsed = parseDocument(pathToFileURL(candidate).toString(), text);
-					if (parsed.ast.unitName?.toLowerCase() === unitName.toLowerCase()) {
+					if (
+						!parsed.ast.unitName ||
+						parsed.ast.unitName.toLowerCase() === unitName.toLowerCase()
+					) {
 						return parsed;
 					}
 				} catch (error) {
