@@ -1,1 +1,1 @@
-{"root":["./src/pascalParser.ts","./src/server.ts","./src/compiler/ast.ts","./src/compiler/definitionIndex.ts","./src/compiler/index.ts","./src/compiler/models.ts","./src/compiler/scopes.ts","./src/compiler/symbols.ts","./src/compiler/types.ts"],"version":"5.9.2"}
+{"root":["./src/pascalparser.ts","./src/server.ts","./src/compiler/ast.ts","./src/compiler/definitionindex.ts","./src/compiler/index.ts","./src/compiler/models.ts","./src/compiler/scopes.ts","./src/compiler/symbols.ts","./src/compiler/types.ts"],"version":"5.9.2"}
