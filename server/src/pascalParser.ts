@@ -109,7 +109,7 @@ export function parseDocumentSymbols(document: TextDocument): DocumentSymbol[] {
   const subprogramRegex = /\b(procedure|function|constructor|destructor)\s+([a-zA-Z0-9_.]+)/i;
   const packageRegex = /^\s*(program|unit|library)\s+([a-zA-Z0-9_]+)/i;
   const classRecordRegex = /^\s*([a-zA-Z0-9_]+)\s*=\s*(class|record|interface|object|packed record)\b/i;
-  const typeAliasRegex = /^\s*([a-zA-Z0-9_]+)\s*=\s*([^;]+);/i;
+  const typeStartRegex = /^\s*([a-zA-Z0-9_]+)\s*=\s*(.*)$/i;
   const constRegex = /^\s*([a-zA-Z0-9_]+)\s*(?::\s*[^=]+)?=\s*([^;]+);/i;
   const varRegex = /^\s*([a-zA-Z0-9_]+(?:\s*,\s*[a-zA-Z0-9_]+)*)\s*:\s*([^;]+);/i;
 
@@ -168,12 +168,25 @@ export function parseDocumentSymbols(document: TextDocument): DocumentSymbol[] {
         kind = SymbolKind.Constructor;
       }
 
-      symbols.push({
-        name,
-        kind,
-        range,
-        selectionRange
-      });
+      const existingIdx = symbols.findIndex(
+        s => s.name.toLowerCase() === name.toLowerCase() &&
+             (s.kind === SymbolKind.Function || s.kind === SymbolKind.Method || s.kind === SymbolKind.Constructor)
+      );
+      if (existingIdx !== -1) {
+        symbols[existingIdx] = {
+          name,
+          kind,
+          range,
+          selectionRange
+        };
+      } else {
+        symbols.push({
+          name,
+          kind,
+          range,
+          selectionRange
+        });
+      }
       continue;
     }
 
@@ -203,18 +216,64 @@ export function parseDocumentSymbols(document: TextDocument): DocumentSymbol[] {
         continue;
       }
 
-      const aliasMatch = typeAliasRegex.exec(line);
-      if (aliasMatch) {
-        const name = aliasMatch[1];
+      const typeMatch = typeStartRegex.exec(line);
+      if (typeMatch) {
+        const name = typeMatch[1];
         const startIdx = line.indexOf(name);
-        const range = Range.create(lineNum, 0, lineNum, line.length);
-        const selectionRange = Range.create(lineNum, startIdx, lineNum, startIdx + name.length);
+        const restOfLine = typeMatch[2];
+
+        let endLineNum = lineNum;
+        const defLines: { lineNum: number; text: string }[] = [{ lineNum, text: restOfLine }];
+
+        if (!restOfLine.includes(';')) {
+          while (endLineNum + 1 < lines.length) {
+            const nextLine = lines[endLineNum + 1];
+            if (sectionHeaderRegex.test(nextLine) || subprogramRegex.test(nextLine) || packageRegex.test(nextLine)) {
+              break;
+            }
+            endLineNum++;
+            defLines.push({ lineNum: endLineNum, text: nextLine });
+            if (nextLine.includes(';')) {
+              break;
+            }
+          }
+        }
+
+        const fullDefText = defLines.map(d => d.text).join(' ');
+        const isEnum = /^\s*\(/.test(fullDefText);
+        const kind = isEnum ? SymbolKind.Enum : SymbolKind.Class;
+
+        let children: DocumentSymbol[] | undefined;
+        if (isEnum) {
+          children = [];
+          for (const item of defLines) {
+            const idRegex = /\b([a-zA-Z_][a-zA-Z0-9_]*)\b/g;
+            let m: RegExpExecArray | null;
+            while ((m = idRegex.exec(lines[item.lineNum])) !== null) {
+              const idName = m[1];
+              // Avoid matching type name if on start line
+              if (item.lineNum === lineNum && m.index <= startIdx + name.length) {
+                continue;
+              }
+              children.push({
+                name: idName,
+                kind: SymbolKind.EnumMember,
+                range: Range.create(item.lineNum, m.index, item.lineNum, m.index + idName.length),
+                selectionRange: Range.create(item.lineNum, m.index, item.lineNum, m.index + idName.length)
+              });
+            }
+          }
+        }
+
         symbols.push({
           name,
-          kind: SymbolKind.Class, // display type aliases as Class/Type
-          range,
-          selectionRange
+          kind,
+          range: Range.create(lineNum, 0, endLineNum, lines[endLineNum].length),
+          selectionRange: Range.create(lineNum, startIdx, lineNum, startIdx + name.length),
+          children: children && children.length > 0 ? children : undefined
         });
+
+        lineNum = endLineNum;
         continue;
       }
     } else if (currentSection === 'const') {
@@ -283,7 +342,10 @@ const pascalBuiltins = [
   'comparetext', 'strtoint', 'inttostr', 'format'
 ];
 
-export function getCompletions(document: TextDocument): CompletionItem[] {
+export function getCompletions(
+  document: TextDocument,
+  externalSymbols?: readonly { name: string; kind: string; detail?: string }[]
+): CompletionItem[] {
   const items: CompletionItem[] = [];
   const seen = new Set<string>();
 
@@ -327,6 +389,10 @@ export function getCompletions(document: TextDocument): CompletionItem[] {
         kind = CompletionItemKind.Constructor;
       } else if (sym.kind === SymbolKind.Class) {
         kind = CompletionItemKind.Class;
+      } else if (sym.kind === SymbolKind.Enum) {
+        kind = CompletionItemKind.Enum;
+      } else if (sym.kind === SymbolKind.EnumMember) {
+        kind = CompletionItemKind.EnumMember;
       } else if (sym.kind === SymbolKind.Struct) {
         kind = CompletionItemKind.Struct;
       } else if (sym.kind === SymbolKind.Constant) {
@@ -343,6 +409,48 @@ export function getCompletions(document: TextDocument): CompletionItem[] {
         label: sym.name,
         kind
       });
+    }
+
+    if (sym.children) {
+      for (const child of sym.children) {
+        const childKey = child.name.toLowerCase();
+        if (!seen.has(childKey)) {
+          seen.add(childKey);
+          items.push({
+            label: child.name,
+            kind: child.kind === SymbolKind.EnumMember ? CompletionItemKind.EnumMember : CompletionItemKind.Text
+          });
+        }
+      }
+    }
+  }
+
+  // Add external symbols from imported units
+  if (externalSymbols) {
+    for (const sym of externalSymbols) {
+      const key = sym.name.toLowerCase();
+      if (!seen.has(key)) {
+        seen.add(key);
+
+        let kind: CompletionItemKind = CompletionItemKind.Text;
+        if (sym.kind === 'subprogram') {
+          kind = CompletionItemKind.Function;
+        } else if (sym.kind === 'type') {
+          kind = CompletionItemKind.Class;
+        } else if (sym.kind === 'enumMember') {
+          kind = CompletionItemKind.EnumMember;
+        } else if (sym.kind === 'constant') {
+          kind = CompletionItemKind.Constant;
+        } else if (sym.kind === 'variable') {
+          kind = CompletionItemKind.Variable;
+        }
+
+        items.push({
+          label: sym.name,
+          kind,
+          detail: sym.detail
+        });
+      }
     }
   }
 

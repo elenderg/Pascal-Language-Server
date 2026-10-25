@@ -862,6 +862,39 @@ export class PascalDefinitionIndex {
 		return implementations;
 	}
 
+	async getExportedSymbols(
+		uri: string,
+		searchPaths: readonly string[] = [],
+	): Promise<{ name: string; kind: string; detail?: string }[]> {
+		const root = this.openDocuments.get(uri);
+		if (!root) {
+			return [];
+		}
+		const reachable = await this.getReachableDocuments(root, searchPaths);
+		const exported: { name: string; kind: string; detail?: string }[] = [];
+		for (const doc of reachable) {
+			if (doc.uri === root.uri) {
+				continue;
+			}
+			for (const symbol of doc.symbols.getAll()) {
+				const decl = symbol.declaringNode;
+				if (
+					decl instanceof DefinitionDeclarationNode &&
+					decl.section === 'interface' &&
+					!decl.ownerSubprogramName &&
+					decl.kind !== 'field'
+				) {
+					exported.push({
+						name: symbol.name,
+						kind: decl.kind,
+						detail: doc.ast.unitName ? `(from ${doc.ast.unitName})` : undefined,
+					});
+				}
+			}
+		}
+		return exported;
+	}
+
 	async findReferences(
 		uri: string,
 		word: string,

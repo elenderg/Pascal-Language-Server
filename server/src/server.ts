@@ -419,12 +419,20 @@ connection.onDidChangeWatchedFiles(_change => {
 });
 
 // This handler provides the initial list of the completion items.
-connection.onCompletion((params): CompletionItem[] => {
+connection.onCompletion(async (params): Promise<CompletionItem[]> => {
 	const document = documents.get(params.textDocument.uri);
-	if (document) {
+	if (!document) {
+		return [];
+	}
+	try {
+		const settings = await getDocumentSettings(document.uri);
+		const searchPaths = getDefinitionSearchPaths(document, settings);
+		const importedSymbols = await definitionIndex.getExportedSymbols(document.uri, searchPaths);
+		return getCompletions(document, importedSymbols);
+	} catch (error) {
+		connection.console.error(`Error resolving completions: ${error}`);
 		return getCompletions(document);
 	}
-	return [];
 });
 
 // This handler resolves additional information for the item selected in the completion list.

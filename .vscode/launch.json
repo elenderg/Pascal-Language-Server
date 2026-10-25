@@ -9,6 +9,7 @@
 			"runtimeExecutable": "${execPath}",
 			"args": [
         "--trace-deprecation",
+        "--disable-extension=osmosianorderofplainenglishprogrammers.pascal-lsp",
         "--extensionDevelopmentPath=${workspaceFolder}"
     ],
 			"outFiles": [
